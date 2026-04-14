@@ -137,37 +137,31 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
   ];
 
   return (
-    <div className="min-h-screen bg-black flex flex-col lg:flex-row overflow-hidden">
+    <div className="min-h-screen bg-black flex flex-col lg:flex-row overflow-hidden font-sans selection:bg-white selection:text-black">
+      {/* Grid Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]" 
+           style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+      
       {/* Left Side: Marketing Section */}
-      <div className="lg:w-1/2 relative flex flex-col justify-center px-8 lg:px-20 py-12 bg-[#050505] border-r border-neutral-800 overflow-hidden">
-        {/* Background Grids/Nodes Decoration */}
-        <div className="absolute inset-0 opacity-20 pointer-events-none">
-          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_30%_30%,#1d4ed8_0%,transparent_50%)]"></div>
-          <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(circle_at_70%_70%,#1e1b4b_0%,transparent_50%)]"></div>
-          <div className="grid grid-cols-12 h-full w-full opacity-10">
-            {Array.from({ length: 144 }).map((_, i) => (
-              <div key={i} className="border-[0.5px] border-neutral-700 h-20 w-full"></div>
-            ))}
-          </div>
-        </div>
-
+      <div className="lg:w-1/2 relative flex flex-col justify-center px-8 lg:px-20 py-12 border-r border-white/10 overflow-hidden z-10">
+        {/* Hero Glow */}
+        <div className="absolute top-0 left-0 w-full h-full bg-blue-500/5 blur-[120px] rounded-full pointer-events-none" />
+        
         <div className="relative z-10">
           {onBack && (
             <button 
               onClick={onBack}
-              className="mb-8 flex items-center gap-2 text-neutral-500 hover:text-white transition-colors group"
+              className="mb-12 flex items-center gap-2 text-neutral-500 hover:text-white transition-colors group"
             >
-              <div className="w-8 h-8 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center group-hover:border-neutral-700">
+              <div className="w-8 h-8 rounded-md bg-white/5 border border-white/10 flex items-center justify-center group-hover:border-white/20 transition-all">
                 <ChevronRight className="w-4 h-4 rotate-180" />
               </div>
-              <span className="text-sm font-medium">Back to Home</span>
+              <span className="text-xs font-bold uppercase tracking-widest">Back to Home</span>
             </button>
           )}
-          <div className="flex items-center gap-3 mb-12">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.4)]">
-              <Shield className="text-white w-6 h-6" />
-            </div>
-            <span className="text-2xl font-bold text-white tracking-tight">Kastron<span className="text-blue-500">Sec</span></span>
+          <div className="flex items-center gap-2.5 mb-16 group cursor-pointer">
+            <img src="/src/assets/logo.png" alt="KastronSec" className="w-8 h-8 object-contain transition-transform group-hover:scale-110" />
+            <span className="text-xl font-bold tracking-tighter text-white">KastronSec</span>
           </div>
 
           <motion.div
@@ -175,79 +169,131 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <h1 className="text-4xl lg:text-6xl font-bold text-white mb-6 leading-tight tracking-tight">
+            <h1 className="text-4xl lg:text-6xl font-bold text-white mb-8 leading-[1.1] tracking-tighter">
               Next-Gen Security <br />
               <span className="text-neutral-500">for the Modern Enterprise.</span>
             </h1>
-            <p className="text-lg text-neutral-400 mb-12 max-w-lg leading-relaxed">
+            <p className="text-lg text-neutral-400 mb-16 max-w-lg leading-relaxed font-medium">
               KastronSec provides autonomous threat hunting and real-time response capabilities, 
               securing your digital assets with the power of advanced AI.
             </p>
           </motion.div>
 
-          <div className="space-y-8">
-            {features.map((feature, index) => (
+          {/* Professional Security Intelligence Visualization */}
+          <div className="relative mt-16 group">
+            {/* Background Mesh Grid */}
+            <div className="absolute inset-0 z-0 opacity-[0.05]" 
+                 style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+            
+            <div className="relative z-10 space-y-6">
+              {/* Main Intelligence Core */}
               <motion.div 
-                key={index}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 + (index * 0.1) }}
-                className="flex gap-5 group"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+                className="bg-white/[0.02] border border-white/10 rounded-2xl p-8 backdrop-blur-sm overflow-hidden relative"
               >
-                <div className="flex-shrink-0 w-12 h-12 bg-neutral-900 border border-neutral-800 rounded-xl flex items-center justify-center group-hover:border-blue-500/50 transition-colors">
-                  <feature.icon className="w-6 h-6 text-blue-500" />
+                <div className="absolute top-0 right-0 p-6">
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Active Intelligence</span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-white font-semibold mb-1 group-hover:text-blue-400 transition-colors">{feature.title}</h3>
-                  <p className="text-neutral-500 text-sm leading-relaxed">{feature.description}</p>
+
+                <div className="flex items-start gap-8">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.3)]">
+                    <Shield className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-white mb-2 tracking-tight">KastronSec Core</h3>
+                    <p className="text-neutral-500 text-sm font-medium leading-relaxed max-w-md">
+                      Our proprietary security engine orchestrating autonomous threat detection and response across your entire infrastructure.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Animated Data Stream */}
+                <div className="mt-10 h-16 flex items-end gap-1.5">
+                  {[...Array(32)].map((_, i) => (
+                    <motion.div
+                      key={i}
+                      animate={{ 
+                        height: [10, Math.random() * 40 + 10, 10],
+                        opacity: [0.2, 0.5, 0.2]
+                      }}
+                      transition={{ 
+                        duration: 2 + Math.random(), 
+                        repeat: Infinity, 
+                        ease: "easeInOut",
+                        delay: i * 0.05 
+                      }}
+                      className="flex-1 bg-blue-500/30 rounded-t-[1px]"
+                    />
+                  ))}
                 </div>
               </motion.div>
-            ))}
-          </div>
 
-          <div className="mt-16 pt-8 border-t border-neutral-800/50 flex items-center gap-8">
-            <div className="flex -space-x-3">
-              {[1, 2, 3, 4].map((i) => (
-                <div 
-                  key={i}
-                  className="w-10 h-10 rounded-full border-2 border-[#050505] bg-neutral-800 flex items-center justify-center"
-                >
-                  <User className="w-5 h-5 text-neutral-400" />
-                </div>
-              ))}
+              {/* Feature Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {features.map((feature, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.2 + (index * 0.1) }}
+                    className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 hover:bg-white/[0.04] hover:border-white/20 transition-all duration-500 group"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:border-blue-500/30 transition-all duration-500">
+                      <feature.icon className="w-5 h-5 text-blue-500" />
+                    </div>
+                    <h4 className="text-white font-bold text-sm mb-2 tracking-tight group-hover:text-blue-400 transition-colors">
+                      {feature.title}
+                    </h4>
+                    <p className="text-neutral-500 text-[11px] leading-relaxed font-medium">
+                      {feature.description}
+                    </p>
+                    
+                    {/* Professional Metric Label */}
+                    <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
+                      <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">Status</span>
+                      <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Optimized</span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
             </div>
-            <p className="text-neutral-500 text-sm">
-              Trusted by <span className="text-white font-medium">500+ enterprises</span> worldwide.
-            </p>
+
+            {/* Subtle Decorative Elements */}
+            <div className="absolute -bottom-12 -left-12 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full pointer-events-none" />
           </div>
         </div>
       </div>
 
       {/* Right Side: Auth Portal */}
-      <div className="lg:w-1/2 flex items-center justify-center p-8 lg:p-20 bg-black">
+      <div className="lg:w-1/2 flex items-center justify-center p-8 lg:p-20 bg-black relative z-10">
         <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
+          initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
-          <div className="mb-10">
-            <h2 className="text-3xl font-bold text-white mb-2">
+          <div className="mb-12">
+            <h2 className="text-3xl font-bold text-white mb-3 tracking-tighter">
               {isLogin ? 'Welcome Back' : 'Create Account'}
             </h2>
-            <p className="text-neutral-500">
+            <p className="text-neutral-500 text-sm font-medium leading-relaxed">
               {isLogin 
                 ? 'Enter your credentials to access your security portal.' 
                 : 'Join KastronSec and start securing your infrastructure today.'}
             </p>
           </div>
 
-          <form onSubmit={handleAuth} className="space-y-5">
+          <form onSubmit={handleAuth} className="space-y-6">
             {error && (
               <motion.div 
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-3 text-red-500 text-sm"
+                className="p-4 bg-red-500/5 border border-red-500/10 rounded-lg flex items-center gap-3 text-red-500 text-[13px] font-medium"
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <p>{error}</p>
@@ -255,39 +301,39 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
             )}
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest ml-1">Email Address</label>
+              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Email Address</label>
               <input 
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@company.com"
-                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600 transition-all"
+                className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
               />
             </div>
 
             {!isLogin && (
               <>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest ml-1">Full Name</label>
+                  <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Full Name</label>
                   <input 
                     type="text"
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="John Doe"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600 transition-all"
+                    className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest ml-1">Company Name</label>
+                  <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Company Name</label>
                   <input 
                     type="text"
                     required
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
                     placeholder="Acme Corp"
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600 transition-all"
+                    className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
                   />
                 </div>
               </>
@@ -295,9 +341,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
 
             <div className="space-y-2">
               <div className="flex justify-between items-center ml-1">
-                <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Password</label>
+                <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Password</label>
                 {isLogin && (
-                  <button type="button" className="text-xs text-blue-500 hover:text-blue-400 transition-colors">Forgot Password?</button>
+                  <button type="button" className="text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors uppercase tracking-widest">Forgot Password?</button>
                 )}
               </div>
               <div className="relative">
@@ -307,7 +353,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600 transition-all"
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
                 />
                 <button 
                   type="button"
@@ -322,39 +368,39 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
             <button 
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition-all shadow-[0_0_20px_rgba(37,99,235,0.2)] flex items-center justify-center gap-2"
+              className="w-full bg-white hover:bg-neutral-200 disabled:bg-white/10 disabled:text-neutral-600 disabled:cursor-not-allowed text-black font-bold py-3 rounded-md transition-all flex items-center justify-center gap-2 text-sm"
             >
               {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin"></div>
               ) : (
                 <>
                   {isLogin ? 'Sign In' : 'Create Account'}
-                  <ChevronRight className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          <div className="mt-8 pt-8 border-t border-neutral-800 text-center">
-            <p className="text-neutral-500 text-sm">
+          <div className="mt-10 pt-10 border-t border-white/5 text-center">
+            <p className="text-neutral-500 text-[13px] font-medium">
               {isLogin ? "Don't have an account?" : "Already have an account?"}
               <button 
                 onClick={() => setIsLogin(!isLogin)}
-                className="ml-2 text-white font-semibold hover:text-blue-500 transition-colors"
+                className="ml-2 text-white font-bold hover:text-blue-500 transition-colors"
               >
                 {isLogin ? 'Sign Up' : 'Sign In'}
               </button>
             </p>
           </div>
 
-          <div className="mt-12 flex items-center justify-center gap-6 opacity-40 grayscale hover:grayscale-0 transition-all duration-500">
+          <div className="mt-12 flex items-center justify-center gap-8 opacity-30 grayscale hover:grayscale-0 transition-all duration-500">
             <div className="flex items-center gap-2">
               <Lock className="w-4 h-4 text-neutral-500" />
-              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">SOC2 Certified</span>
+              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">SOC2</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-neutral-500" />
-              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">GDPR Compliant</span>
+              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">GDPR</span>
             </div>
           </div>
         </motion.div>
