@@ -1,0 +1,36 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches:
+      - main # Or your default branch name
+    paths:
+      - 'supabase/functions/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy install-agent
+        run: supabase functions deploy install-agent --project-ref gjzlazvuiijeuetsfoou --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy wazuh-sync
+        run: supabase functions deploy wazuh-sync --project-ref gjzlazvuiijeuetsfoou --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy create-client
+        run: supabase functions deploy create-client --project-ref gjzlazvuiijeuetsfoou --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
