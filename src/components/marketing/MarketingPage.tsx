@@ -260,7 +260,7 @@ export default function MarketingPage({ onGetStarted, onLogin }: MarketingPagePr
             {features.map((feature, idx) => (
               <div 
                 key={idx}
-                className="p-10 bg-black hover:bg-white/[0.02] transition-colors group relative"
+                className="p-10 bg-black transition-colors group relative"
               >
                 <div className={cn("w-10 h-10 mb-6 transition-transform group-hover:scale-110", feature.color)}>
                   <feature.icon className="w-full h-full" />
