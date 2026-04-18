@@ -32,6 +32,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Trust proxy for rate limiting accurate IP identification
+  app.set('trust proxy', 1);
+
   // Security Headers
   app.use(helmet({
     contentSecurityPolicy: false, // Vite handles CSP in dev

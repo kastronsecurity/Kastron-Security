@@ -54,6 +54,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
   const [agents, setAgents] = useState<any[]>([]);
   const [firewallStatus, setFirewallStatus] = useState<'none' | 'pending' | 'received'>('none');
   const [skipped, setSkipped] = useState(false);
+  const [firewallTab, setFirewallTab] = useState<'config' | 'details'>('config');
 
   const fetchClientData = async () => {
     if (!supabase || !user) return;
@@ -317,27 +318,38 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-[500px] bg-blue-500/5 blur-[120px] rounded-full pointer-events-none" />
 
       <div className="w-full max-w-3xl relative z-10">
-        {/* Header */}
-        <div className="text-center mb-16 relative">
-          <div className="absolute -top-12 right-0 flex items-center gap-6">
+        {/* Top Navigation */}
+        <div className="flex items-center justify-between mb-12">
+          <button 
+            onClick={handleLogout}
+            className="flex items-center gap-2 text-neutral-500 hover:text-white transition-all text-[11px] font-bold uppercase tracking-widest group px-3 py-1.5 rounded-full hover:bg-white/5"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
+            Back to Login
+          </button>
+
+          <div className="flex items-center gap-6">
             {user.user_metadata?.onboarding_completed && (
               <button 
                 onClick={onComplete}
-                className="flex items-center gap-2 text-neutral-500 hover:text-white transition-colors text-[10px] font-bold uppercase tracking-widest"
+                className="flex items-center gap-2 text-neutral-500 hover:text-white transition-all text-[11px] font-bold uppercase tracking-widest group px-3 py-1.5 rounded-full hover:bg-white/5"
               >
-                <ArrowLeft className="w-3 h-3" />
+                <ArrowLeft className="w-3.5 h-3.5" />
                 Dashboard
               </button>
             )}
             <button 
               onClick={handleLogout}
-              className="flex items-center gap-2 text-neutral-500 hover:text-white transition-colors text-[10px] font-bold uppercase tracking-widest"
+              className="flex items-center gap-2 text-neutral-500 hover:text-white transition-all text-[11px] font-bold uppercase tracking-widest group px-3 py-1.5 rounded-full hover:bg-white/5"
             >
-              <LogOut className="w-3 h-3" />
+              <LogOut className="w-3.5 h-3.5" />
               Sign Out
             </button>
           </div>
-          
+        </div>
+
+        {/* Header */}
+        <div className="text-center mb-16 relative">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-neutral-400 mb-8">
             <Lock className="w-3 h-3 text-blue-500" />
             Secure Onboarding
@@ -456,17 +468,12 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
                         <select 
                           value={firewallConfig.brand}
                           onChange={(e) => setFirewallConfig(prev => ({ ...prev, brand: e.target.value }))}
-                          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-red-500/50 appearance-none"
+                          className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-white/20 appearance-none text-white transition-all cursor-pointer"
                         >
-                          <option value="">Select Brand</option>
-                          <option value="pfSense">pfSense</option>
-                          <option value="FortiGate">FortiGate</option>
-                          <option value="Cisco ASA">Cisco ASA</option>
-                          <option value="Sophos XG">Sophos XG</option>
-                          <option value="OPNsense">OPNsense</option>
-                          <option value="SonicWall">SonicWall</option>
-                          <option value="Palo Alto">Palo Alto</option>
-                          <option value="Generic Syslog">Generic Syslog</option>
+                          <option value="" className="bg-black text-white">Select Brand</option>
+                          <option value="pfSense" className="bg-black text-white">pfSense</option>
+                          <option value="OPNsense" className="bg-black text-white">OPNsense</option>
+                          <option value="FortiGate" className="bg-black text-white">FortiGate</option>
                         </select>
                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
                       </div>
@@ -612,84 +619,200 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
                       
                       <div className="bg-white/[0.02] border border-white/10 rounded-xl overflow-hidden">
                         <div className="flex border-b border-white/5">
-                          <button className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest bg-white/5 text-white">Configuration Steps</button>
-                          <button className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-neutral-500 hover:text-white">Connection Details</button>
+                          <button 
+                            onClick={() => setFirewallTab('config')}
+                            className={cn(
+                              "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                              firewallTab === 'config' ? "bg-white/5 text-white" : "text-neutral-500 hover:text-white"
+                            )}
+                          >
+                            Configuration Steps
+                          </button>
+                          <button 
+                            onClick={() => setFirewallTab('details')}
+                            className={cn(
+                              "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                              firewallTab === 'details' ? "bg-white/5 text-white" : "text-neutral-500 hover:text-white"
+                            )}
+                          >
+                            Connection Details
+                          </button>
                         </div>
-                        <div className="p-6 space-y-4">
-                          <div className="space-y-4 text-[13px] text-neutral-400 font-medium leading-relaxed">
-                            {firewallConfig.brand === 'pfSense' && (
-                              <ol className="list-decimal list-inside space-y-2">
-                                <li>Navigate to <b>Status &gt; System Logs &gt; Settings</b></li>
-                                <li>Scroll to <b>Remote Logging Options</b></li>
-                                <li>Check <b>Send log messages to remote syslog server</b></li>
-                                <li>Select <b>WAN</b> as Source Address</li>
-                                <li>Add <code>{WAZUH_IP}:514</code> to IP Addresses</li>
-                                <li>Check <b>Everything</b> or specific logs under Remote Syslog Contents</li>
-                                <li>Click <b>Save</b> at the bottom</li>
-                              </ol>
-                            )}
-                            {firewallConfig.brand === 'FortiGate' && (
-                              <ol className="list-decimal list-inside space-y-2">
-                                <li>Go to <b>Log & Report &gt; Log Settings</b></li>
-                                <li>Enable <b>Send Logs to Syslog</b></li>
-                                <li>Enter IP Address: <code>{WAZUH_IP}</code></li>
-                                <li>Set Port: <code>514</code></li>
-                                <li>Set Reliable Logging: <b>No (UDP)</b></li>
-                                <li>Apply changes</li>
-                              </ol>
-                            )}
-                            {(!['pfSense', 'FortiGate'].includes(firewallConfig.brand)) && (
-                              <p>Navigate to your firewall's Syslog/Remote Logging settings and point it to: <br/><code className="text-red-400">{WAZUH_IP}:514</code> via {firewallConfig.protocol}</p>
-                            )}
-                          </div>
-                          
-                          <div className="pt-4 border-t border-white/5 grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">KastronSec Syslog IP</span>
-                              <div className="flex items-center justify-between bg-black rounded p-2 border border-white/5">
-                                <span className="text-xs font-mono text-green-400">{WAZUH_IP}</span>
-                                <button onClick={() => copyToClipboard(WAZUH_IP)}><Copy className="w-3 h-3 text-neutral-600 hover:text-white" /></button>
+                        <div className="p-6">
+                          {firewallTab === 'config' ? (
+                            <div className="space-y-4 text-[13px] text-neutral-400 font-medium leading-relaxed">
+                              {firewallConfig.brand === 'pfSense' && (
+                                <ol className="list-decimal list-inside space-y-2">
+                                  <li>Access your <b>pfSense Web Dashboard</b> at <code>https://{firewallConfig.ip}</code></li>
+                                  <li>Navigate to <b>Status &gt; System Logs &gt; Settings</b></li>
+                                  <li>Scroll to <b>Remote Logging Options</b></li>
+                                  <li>Check <b>Send log messages to remote syslog server</b></li>
+                                  <li>Select <b>WAN</b> as Source Address</li>
+                                  <li>Add <code>{WAZUH_IP}:514</code> to IP Addresses</li>
+                                  <li>Check <b>Everything</b> or specific logs under Remote Syslog Contents</li>
+                                  <li>Click <b>Save</b> at the bottom</li>
+                                </ol>
+                              )}
+                              {firewallConfig.brand === 'FortiGate' && (
+                                <ol className="list-decimal list-inside space-y-2">
+                                  <li>Log in to your <b>FortiGate Web UI</b> at <code>https://{firewallConfig.ip}</code></li>
+                                  <li>Go to <b>Log & Report &gt; Log Settings</b></li>
+                                  <li>Enable <b>Send Logs to Syslog</b></li>
+                                  <li>Enter IP Address: <code>{WAZUH_IP}</code></li>
+                                  <li>Set Port: <code>514</code></li>
+                                  <li>Set Reliable Logging: <b>No (UDP)</b></li>
+                                  <li>Apply changes</li>
+                                </ol>
+                              )}
+                              {firewallConfig.brand === 'OPNsense' && (
+                                <ol className="list-decimal list-inside space-y-2">
+                                  <li>Access your <b>OPNsense Dashboard</b> at <code>https://{firewallConfig.ip}</code></li>
+                                  <li>Navigate to <b>System &gt; Logging &gt; Targets</b></li>
+                                  <li>Click the <b>+ (Plus)</b> icon to add a new target</li>
+                                  <li>Set Transport to <b>UDP (4)</b></li>
+                                  <li>Set Hostname to <code>{WAZUH_IP}</code></li>
+                                  <li>Set Port to <code>514</code></li>
+                                  <li>Select the log types you wish to forward (e.g., Firewall, System)</li>
+                                  <li>Click <b>Save</b> and <b>Apply Changes</b></li>
+                                </ol>
+                              )}
+                              {(!['pfSense', 'FortiGate', 'OPNsense'].includes(firewallConfig.brand)) && (
+                                <p>Access your firewall's dashboard at <code className="text-blue-400">https://{firewallConfig.ip}</code>, navigate to the Syslog/Remote Logging settings and point it to: <br/><code className="text-red-400">{WAZUH_IP}:514</code> via {firewallConfig.protocol}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-6">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">KastronSec Syslog IP</span>
+                                  <div className="flex items-center justify-between bg-black rounded p-3 border border-white/5 group relative">
+                                    <span className="text-xs font-mono text-green-400">{WAZUH_IP}</span>
+                                    <button 
+                                      onClick={() => copyToClipboard(WAZUH_IP)}
+                                      className="p-1 px-2 rounded bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] font-bold text-white uppercase"
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">Syslog Port</span>
+                                  <div className="flex items-center justify-between bg-black rounded p-3 border border-white/5">
+                                    <span className="text-xs font-mono text-blue-400">514</span>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">Protocol</span>
+                                  <div className="flex items-center justify-between bg-black rounded p-3 border border-white/5">
+                                    <span className="text-xs font-mono text-neutral-400">{firewallConfig.protocol}</span>
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">Your Firewall IP</span>
+                                  <div className="flex items-center justify-between bg-black rounded p-3 border border-white/5">
+                                    <span className="text-xs font-mono text-blue-400">{firewallConfig.ip}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl space-y-2">
+                                <div className="flex items-center gap-2 text-blue-400">
+                                  <AlertCircle className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] font-bold uppercase tracking-widest">Security Note</span>
+                                </div>
+                                <p className="text-[11px] text-neutral-500 leading-relaxed">
+                                  Ensure your firewall allows outgoing traffic on port <b>514 ({firewallConfig.protocol})</b> to the KastronSec Syslog IP.
+                                </p>
                               </div>
                             </div>
-                            <div className="space-y-1">
-                              <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">Your Firewall IP</span>
-                              <div className="flex items-center justify-between bg-black rounded p-2 border border-white/5">
-                                <span className="text-xs font-mono text-blue-400">{firewallConfig.ip}</span>
-                              </div>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </div>
                   )}
 
                   {selections.includes('webserver') && (
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                       <div className="flex items-center gap-2 text-emerald-500">
                         <Globe className="w-4 h-4" />
                         <h3 className="text-[11px] font-bold uppercase tracking-widest">Web Server Log Monitoring</h3>
                       </div>
-                      <p className="text-[11px] text-neutral-500 italic font-medium">After installing the agent, add these lines to your agent.conf to monitor web server logs:</p>
-                      <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-4 font-mono text-[12px] text-green-400 group relative">
-                        <button 
-                          onClick={() => copyToClipboard(`<localfile>
-  <log_format>apache</log_format>
-  <location>/var/log/apache2/access.log</location>
-</localfile>
-<localfile>
-  <log_format>apache</log_format>
-  <location>/var/log/apache2/error.log</location>
-</localfile>`)}
-                          className="absolute right-4 top-4 p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
-                        >
-                          <Copy className="w-4 h-4 text-white" />
-                        </button>
-                        <pre className="whitespace-pre-wrap">
+                      
+                      <div className="space-y-6">
+                        {/* Step 1: Installation */}
+                        <div className="space-y-2">
+                          <p className="text-[11px] text-neutral-400 font-bold uppercase tracking-widest">Step 1: Install Security Agent</p>
+                          <p className="text-[11px] text-neutral-500 leading-relaxed font-medium">First, install the security agent on your web server:</p>
+                          <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-4 font-mono text-[12px] text-green-400 group relative">
+                            <button 
+                              onClick={() => copyToClipboard(`curl -s "${import.meta.env.VITE_SUPABASE_URL}/functions/v1/install-agent?key=${installKey}&os=linux" | sudo bash`)}
+                              className="absolute right-4 top-4 p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
+                            >
+                              <Copy className="w-4 h-4 text-white" />
+                            </button>
+                            <code>
+                              curl -s "{import.meta.env.VITE_SUPABASE_URL}/functions/v1/install-agent?key={installKey}&os=linux" | sudo bash
+                            </code>
+                          </div>
+                        </div>
+
+                        {/* Step 2: Configuration */}
+                        <div className="space-y-4">
+                          <p className="text-[11px] text-neutral-400 font-bold uppercase tracking-widest">Step 2: Configure Log Collection</p>
+                          
+                          <div className="space-y-3">
+                            <p className="text-[11px] text-neutral-500 leading-relaxed font-medium">1. Open the configuration file:</p>
+                            <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-3 font-mono text-[11px] text-green-400 group relative">
+                              <button onClick={() => copyToClipboard('sudo nano /var/ossec/etc/ossec.conf')} className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-3.5 h-3.5 text-white" /></button>
+                              <code>sudo nano /var/ossec/etc/ossec.conf</code>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <p className="text-[11px] text-neutral-500 leading-relaxed font-medium">2. Scroll to the bottom and paste the following block based on your web server:</p>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-2">
+                                <span className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">Apache (Ubuntu/Debian)</span>
+                                <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-3 font-mono text-[11px] text-emerald-400 group relative">
+                                  <button onClick={() => copyToClipboard(`<localfile>\n  <log_format>apache</log_format>\n  <location>/var/log/apache2/access.log</location>\n</localfile>`)} className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-3.5 h-3.5 text-white" /></button>
+                                  <pre className="text-[10px]">
 {`<localfile>
   <log_format>apache</log_format>
   <location>/var/log/apache2/access.log</location>
 </localfile>`}
-                        </pre>
+                                  </pre>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <span className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest">Nginx (Universal)</span>
+                                <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-3 font-mono text-[11px] text-emerald-400 group relative">
+                                  <button onClick={() => copyToClipboard(`<localfile>\n  <log_format>apache</log_format>\n  <location>/var/log/nginx/access.log</location>\n</localfile>`)} className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-3.5 h-3.5 text-white" /></button>
+                                  <pre className="text-[10px]">
+{`<localfile>
+  <log_format>apache</log_format>
+  <location>/var/log/nginx/access.log</location>
+</localfile>`}
+                                  </pre>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[11px] text-neutral-500 leading-relaxed font-medium">3. Save and Exit:</p>
+                            <p className="text-[10px] text-neutral-600 italic">Press <kbd className="px-1.5 py-0.5 bg-neutral-800 rounded text-neutral-400 border border-neutral-700 not-italic">Ctrl+O</kbd>, then <kbd className="px-1.5 py-0.5 bg-neutral-800 rounded text-neutral-400 border border-neutral-700 not-italic">Enter</kbd> to save. Press <kbd className="px-1.5 py-0.5 bg-neutral-800 rounded text-neutral-400 border border-neutral-700 not-italic">Ctrl+X</kbd> to exit.</p>
+                          </div>
+                        </div>
+
+                        {/* Step 3: Restart */}
+                        <div className="space-y-2">
+                          <p className="text-[11px] text-neutral-400 font-bold uppercase tracking-widest">Step 3: Restart Agent</p>
+                          <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-3 font-mono text-[11px] text-green-400 group relative">
+                            <button onClick={() => copyToClipboard('sudo systemctl restart wazuh-agent')} className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-opacity"><Copy className="w-3.5 h-3.5 text-white" /></button>
+                            <code>sudo systemctl restart wazuh-agent</code>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
