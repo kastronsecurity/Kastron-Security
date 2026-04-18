@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { supabase } from '../lib/supabase';
 import { useClient } from './ClientContext';
 
-export type NotificationType = 'critical' | 'high' | 'medium' | 'low' | 'agent_online' | 'agent_offline' | 'agent_deleted' | 'rule_deployed';
+export type NotificationType = 'critical' | 'high' | 'medium' | 'low' | 'agent_online' | 'agent_offline' | 'agent_deleted' | 'rule_deployed' | 'report_generated' | 'report_downloaded' | 'alert_escalated';
 
 export interface AppNotification {
   id: string;
@@ -17,6 +17,13 @@ export interface AppNotification {
 
 export interface NotificationSettings {
   allowPopups: boolean;
+  slaLimitMinutes: number;
+  slaLimits: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
   popupSeverities: {
     critical: boolean;
     high: boolean;
@@ -26,6 +33,9 @@ export interface NotificationSettings {
     agent_offline: boolean;
     agent_deleted: boolean;
     rule_deployed: boolean;
+    report_generated: boolean;
+    report_downloaded: boolean;
+    alert_escalated: boolean;
   };
 }
 
@@ -45,6 +55,13 @@ interface NotificationContextType {
 
 const defaultSettings: NotificationSettings = {
   allowPopups: true,
+  slaLimitMinutes: 240, // 4 hours default
+  slaLimits: {
+    critical: 60,    // 1 hour
+    high: 240,      // 4 hours
+    medium: 480,    // 8 hours
+    low: 1440,      // 24 hours
+  },
   popupSeverities: {
     critical: true,
     high: true,
@@ -54,6 +71,9 @@ const defaultSettings: NotificationSettings = {
     agent_offline: true,
     agent_deleted: true,
     rule_deployed: true,
+    report_generated: true,
+    report_downloaded: true,
+    alert_escalated: true,
   }
 };
 

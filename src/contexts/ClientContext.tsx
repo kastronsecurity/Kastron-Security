@@ -7,6 +7,19 @@ interface Client {
   name: string;
   install_key: string;
   wazuh_group: string;
+  onboarding_step?: number;
+  infrastructure?: {
+    has_windows: boolean;
+    has_linux: boolean;
+    has_firewall: boolean;
+    has_webserver: boolean;
+    has_cloud: boolean;
+    has_custom: boolean;
+    firewall_type?: string;
+    firewall_ip?: string;
+    syslog_port?: number;
+    syslog_protocol?: string;
+  };
   created_at: string;
 }
 
@@ -34,14 +47,14 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const isFetching = useRef(false);
 
-  const fetchClient = async (passedUser?: any) => {
+  const fetchClient = async (passedUser?: any, isBackground = false) => {
     if (!supabase || isFetching.current) {
       return;
     }
 
     try {
       isFetching.current = true;
-      setLoading(true);
+      if (!isBackground) setLoading(true);
       
       let currentUser = passedUser;
       if (!currentUser) {
@@ -76,8 +89,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             supabase.from('alerts').select('*', { count: 'exact', head: true }).eq('client_id', data.id)
           ]);
           
-          setAgentCount(agentsRes.count || 0);
-          setAlertCount(alertsRes.count || 0);
+          if (!agentsRes.error) setAgentCount(agentsRes.count || 0);
+          if (!alertsRes.error) setAlertCount(alertsRes.count || 0);
         }
       }
     } catch (error) {
@@ -111,34 +124,44 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     });
 
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !currentClient) return;
+
     // Real-time listener for agents and alerts to update counts
+    // Filtered by client_id for performance and to avoid unnecessary refreshes
     const countsChannel = supabase
-      .channel('client_counts')
+      .channel(`client_counts_${currentClient.id}`)
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
-        table: 'agents'
+        table: 'agents',
+        filter: `client_id=eq.${currentClient.id}`
       }, () => {
         if (isFetching.current === false) {
-          fetchClient();
+          fetchClient(undefined, true);
         }
       })
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 
-        table: 'alerts'
+        table: 'alerts',
+        filter: `client_id=eq.${currentClient.id}`
       }, () => {
         if (isFetching.current === false) {
-          fetchClient();
+          fetchClient(undefined, true);
         }
       })
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
       supabase.removeChannel(countsChannel);
     };
-  }, []);
+  }, [currentClient?.id]);
 
   return (
     <ClientContext.Provider value={{ 

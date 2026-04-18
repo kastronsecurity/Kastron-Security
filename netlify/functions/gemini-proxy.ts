@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 import type { Context } from "@netlify/functions";
 
 /**
@@ -18,6 +19,30 @@ export default async (req: Request, context: Context) => {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // 0. AUTHENTICATION: Ensure the request is from an authenticated user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Unauthorized: Missing authentication" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    
+    if (supabaseUrl && supabaseAnonKey) {
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+      const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+      
+      if (authError || !user) {
+        return new Response(JSON.stringify({ error: "Unauthorized: Invalid session" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
 
     const { prompt, ip } = await req.json();

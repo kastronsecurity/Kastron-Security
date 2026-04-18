@@ -45,6 +45,7 @@ import { SeverityBadge, StatusPill } from '../ui/StatusElements';
 import { LogViewer } from '../ui/LogViewer';
 import { supabase } from '../../lib/supabase';
 import { useClient } from '../../contexts/ClientContext';
+import { useNotifications } from '../../contexts/NotificationContext';
 import { generateStructuredSOCReport } from '../../lib/gemini';
 import { downloadIncidentReport } from '../../utils/reportExporter';
 
@@ -697,9 +698,9 @@ const GroupCard = ({
             )}
             <button 
               onClick={(e) => { e.stopPropagation(); onEscalate(); }}
-              className="px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white text-[10px] font-bold rounded transition-all"
+              className="px-4 py-2 bg-black border border-neutral-800 hover:border-white hover:bg-white/5 text-white text-[10px] font-bold rounded-lg transition-all active:scale-95 uppercase tracking-[0.2em]"
             >
-              ESCALATE
+              {group.status === 'Escalated' ? 'VIEW ESCALATION' : 'ESCALATE'}
             </button>
             <button 
               onClick={(e) => { e.stopPropagation(); onPlaybook(); }}
@@ -841,14 +842,13 @@ const EscalationModal = ({
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
-  onConfirm: (priority: string, assignedTo: string, notes: string, generateAI: boolean) => void;
+  onConfirm: (priority: string, assignedTo: string, notes: string, action: 'escalate' | 'report') => void;
   alert: SecurityAlert;
   isGenerating: boolean;
 }) => {
   const [priority, setPriority] = useState(`P${alert.severity === 'CRITICAL' ? '1' : alert.severity === 'HIGH' ? '2' : alert.severity === 'MEDIUM' ? '3' : '4'}`);
   const [assignedTo, setAssignedTo] = useState('');
   const [notes, setNotes] = useState('');
-  const [generateAI, setGenerateAI] = useState(true);
 
   if (!isOpen) return null;
 
@@ -941,22 +941,6 @@ const EscalationModal = ({
                 className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors resize-none"
               />
             </div>
-
-            <div className="flex items-center gap-3 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
-              <button 
-                onClick={() => setGenerateAI(!generateAI)}
-                className={cn(
-                  "w-5 h-5 rounded border transition-all flex items-center justify-center",
-                  generateAI ? "bg-blue-600 border-blue-500" : "border-neutral-700 bg-black"
-                )}
-              >
-                {generateAI && <CheckCircle2 className="w-3 h-3 text-white" />}
-              </button>
-              <div className="flex-1">
-                <p className="text-xs font-bold text-blue-400">Generate AI Incident Report automatically</p>
-                <p className="text-[10px] text-neutral-500">Uses Gemini to analyze logs and create a detailed report</p>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -964,22 +948,29 @@ const EscalationModal = ({
           <button 
             onClick={onClose}
             disabled={isGenerating}
-            className="flex-1 py-3 rounded-xl text-xs font-bold text-neutral-500 hover:text-white hover:bg-white/5 transition-all disabled:opacity-50"
+            className="flex-1 py-3 rounded-xl text-[10px] font-bold text-neutral-500 hover:text-white hover:bg-white/5 transition-all disabled:opacity-50 uppercase tracking-widest"
           >
             CANCEL
           </button>
           <button 
-            onClick={() => onConfirm(priority, assignedTo, notes, generateAI)}
+            onClick={() => onConfirm(priority, assignedTo, notes, 'escalate')}
             disabled={isGenerating}
-            className="flex-1 py-3 rounded-xl text-xs font-bold bg-red-600 text-white hover:bg-red-500 transition-all shadow-lg shadow-red-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-1 py-3 bg-black border border-neutral-800 hover:border-white hover:bg-white/5 text-white text-[10px] font-bold rounded-xl transition-all active:scale-95 uppercase tracking-[0.2em] disabled:opacity-50"
+          >
+            ESCALATE
+          </button>
+          <button 
+            onClick={() => onConfirm(priority, assignedTo, notes, 'report')}
+            disabled={isGenerating}
+            className="flex-1 py-3 rounded-xl text-[10px] font-bold bg-white text-black hover:bg-neutral-200 transition-all disabled:opacity-50 uppercase tracking-widest flex items-center justify-center gap-2"
           >
             {isGenerating ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Generating report with AI...
+                <Loader2 className="w-3 h-3 animate-spin" />
+                GENERATING...
               </>
             ) : (
-              'Escalate & Generate Report'
+              'GENERATE REPORT'
             )}
           </button>
         </div>
@@ -1120,7 +1111,7 @@ const AlertRow = ({
       if (cacheOnly) queryParams.append('cacheOnly', 'true');
       if (forceRefresh) queryParams.append('refresh', 'true');
       
-      const apiResponse = await fetch(`/api/threat-intel/ip/${alert.source_ip}?${queryParams.toString()}`, {
+      const apiResponse = await fetch(`/api/threat-intel/ip/${encodeURIComponent(alert.source_ip)}?${queryParams.toString()}`, {
         headers: {
           'Authorization': session ? `Bearer ${session.access_token}` : ''
         }
@@ -1347,7 +1338,7 @@ const AlertRow = ({
                       e.stopPropagation();
                       if (onEscalate) onEscalate(alert);
                     }}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-[12px] font-bold rounded-lg transition-all shadow-lg shadow-purple-600/20 active:scale-95"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-black border border-neutral-800 hover:border-white hover:bg-white/5 text-white text-[11px] font-bold rounded-lg transition-all active:scale-95 uppercase tracking-[0.2em]"
                   >
                     <ShieldAlert className="w-4 h-4" />
                     ESCALATE
@@ -1369,22 +1360,22 @@ const AlertRow = ({
                 <div className="mb-6 pb-6 border-b border-neutral-800 flex justify-end gap-3">
                   <div className="flex-1 flex items-center gap-2 text-purple-400">
                     <ShieldAlert className="w-4 h-4" />
-                    <span className="text-xs font-bold uppercase tracking-widest">This alert has been escalated for reporting</span>
+                    <span className="text-xs font-bold uppercase tracking-widest">This alert has been escalated</span>
                   </div>
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
                       window.dispatchEvent(new CustomEvent('navigate', { 
                         detail: { 
-                          page: 'reports', 
-                          data: { type: 'Escalation', alert: alert } 
+                          page: 'escalations', 
+                          data: { alertId: alert.id } 
                         } 
                       }));
                     }}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-purple-600/10 hover:bg-purple-600 text-purple-400 hover:text-white text-[12px] font-bold rounded-lg transition-all border border-purple-500/20 active:scale-95"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-black border border-neutral-800 hover:border-white hover:bg-white/5 text-white text-[11px] font-bold rounded-lg transition-all active:scale-95 uppercase tracking-[0.2em]"
                   >
-                    <FileText className="w-4 h-4" />
-                    VIEW IN REPORTS
+                    <ShieldAlert className="w-4 h-4" />
+                    VIEW ESCALATION
                   </button>
                 </div>
               )}
@@ -1695,13 +1686,17 @@ const AlertDetailsModal = ({
   isOpen, 
   onClose,
   onStatusChange,
-  onIntelUpdate
+  onIntelUpdate,
+  onEscalate,
+  onGenerateReport
 }: { 
   alert: SecurityAlert | null; 
   isOpen: boolean; 
   onClose: () => void;
   onStatusChange: (newStatus: string) => void;
   onIntelUpdate?: (alertId: string, intel: SecurityAlert['threat_intel']) => void;
+  onEscalate?: () => void;
+  onGenerateReport?: () => void;
 }) => {
   const [isFetchingIntel, setIsFetchingIntel] = useState(false);
   const [logViewMode, setLogViewMode] = useState<'raw' | 'table'>('raw');
@@ -1721,7 +1716,7 @@ const AlertDetailsModal = ({
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const apiResponse = await fetch(`/api/threat-intel/ip/${alert.source_ip}`, {
+      const apiResponse = await fetch(`/api/threat-intel/ip/${encodeURIComponent(alert.source_ip)}`, {
         headers: {
           'Authorization': session ? `Bearer ${session.access_token}` : ''
         }
@@ -1997,12 +1992,26 @@ const AlertDetailsModal = ({
               <span className="text-[11px] text-neutral-400 font-medium">Status: {alert.status}</span>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            className="px-8 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl transition-all"
-          >
-            DISMISS
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={onClose}
+              className="px-6 py-2.5 bg-transparent hover:bg-white/5 text-neutral-500 hover:text-white text-[10px] font-bold rounded-lg transition-all uppercase tracking-widest"
+            >
+              CANCEL
+            </button>
+            <button 
+              onClick={onEscalate}
+              className="px-6 py-2.5 bg-black border border-neutral-800 hover:border-white hover:bg-white/5 text-white text-[10px] font-bold rounded-lg transition-all active:scale-95 uppercase tracking-[0.2em]"
+            >
+              {alert.status === 'Escalated' ? 'VIEW ESCALATION' : 'ESCALATE'}
+            </button>
+            <button 
+              onClick={onGenerateReport}
+              className="px-6 py-2.5 bg-white hover:bg-neutral-200 text-black text-[10px] font-bold rounded-lg transition-all uppercase tracking-widest"
+            >
+              GENERATE REPORT
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>
@@ -2011,6 +2020,7 @@ const AlertDetailsModal = ({
 
 export default function AlertsPage({ user }: { user?: any }) {
   const { currentClient } = useClient();
+  const { settings, addNotification } = useNotifications();
   // Main component for managing security alerts
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2106,11 +2116,17 @@ export default function AlertsPage({ user }: { user?: any }) {
   useEffect(() => {
     if (!supabase || !currentClient) return;
 
-    const checkTables = async () => {
+  const checkTables = async () => {
       try {
-        const { error } = await supabase.from('cases').select('id').limit(1);
-        if (error && (error.code === 'PGRST116' || error.message.includes('relation "cases" does not exist'))) {
-          setDebugInfo('Warning: The "cases" table does not exist in your database. Please run the SQL setup script to enable merging alerts to cases.');
+        const { error: casesError } = await supabase.from('cases').select('id').limit(1);
+        if (casesError && (casesError.code === 'PGRST116' || casesError.message.includes('relation "cases" does not exist'))) {
+          setDebugInfo(prev => prev + ' Warning: The "cases" table does not exist.');
+        }
+        
+        const { error: intelError } = await supabase.from('threat_intel_cache').select('*').limit(1);
+        if (intelError && (intelError.code === 'PGRST116' || intelError.message.includes('relation "threat_intel_cache" does not exist'))) {
+          // Silent fallback for intel, but log for dev
+          console.warn('Threat intel cache table missing');
         }
       } catch (e) {
         console.error('Error checking tables:', e);
@@ -2432,16 +2448,130 @@ export default function AlertsPage({ user }: { user?: any }) {
     }
   };
 
-  const fetchAlerts = async (retryCount = 0) => {
+  const handleGenerateReport = async (alert: SecurityAlert) => {
     if (!supabase || !currentClient) return;
+    setIsGeneratingReport(true);
+    try {
+      const reportContent = await generateStructuredSOCReport({
+        type: 'Escalation',
+        alertData: alert,
+        analystName: user?.email || 'System AI'
+      });
+
+      const { data: newReport, error: reportError } = await supabase
+        .from('reports')
+        .insert({
+          client_id: currentClient.id,
+          title: `Incident Report: ${alert.description}`,
+          type: 'incident_report',
+          status: 'draft',
+          content: reportContent,
+          alert_id: alert.id,
+          agent_name: alert.agent_name,
+          generated_by: user?.email,
+          date_from: alert.timestamp,
+          date_to: alert.timestamp
+        })
+        .select()
+        .single();
+
+      if (reportError) throw reportError;
+      
+      addNotification({
+        type: 'report_generated',
+        title: 'AI Report Generated',
+        description: `Successfully generated incident report for alert ${alert.id}.`,
+        alertId: alert.id
+      });
+
+      // Update alert status to Escalated if not already
+      await supabase.from('alerts').update({ status: 'Escalated' }).eq('id', alert.id);
+
+      setEscalationSuccessReport(newReport);
+      setSelectedAlertForModal(null);
+    } catch (error) {
+      console.error('Report generation failed:', error);
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const handleEscalateDirect = (alert: SecurityAlert) => {
+    setEscalatingAlert(alert);
+    setSelectedAlertForModal(null);
+  };
+
+  const fetchAlerts = async (retryCount = 0) => {
+    if (!supabase || !currentClient) {
+      if (!currentClient && loading) setLoading(false);
+      return;
+    }
     
     setLoading(true);
     try {
+      if (currentPage === 1) {
+        // High-priority sync for orphaned or misaligned alerts
+        const syncAlerts = async () => {
+          try {
+            // 1. Check if we have visible clients
+            const { count: visibleClients } = await supabase.from('clients').select('*', { count: 'exact', head: true });
+            
+            // 2. Identify if we need to claim anything
+            // We claim if:
+            // - We match by Wazuh Group (most accurate)
+            // - OR We are the ONLY client and there are alerts with different IDs
+            
+            if (currentClient.wazuh_group) {
+              await supabase
+                .from('alerts')
+                .update({ client_id: currentClient.id })
+                .eq('wazuh_group', currentClient.wazuh_group)
+                .neq('client_id', currentClient.id);
+            }
+            
+            if (visibleClients === 1) {
+              const { data: mismatchCount } = await supabase
+                .from('alerts')
+                .select('id')
+                .neq('client_id', currentClient.id)
+                .limit(1);
+              
+              if (mismatchCount && mismatchCount.length > 0) {
+                console.log('Detected ghost alerts, claiming for only visible client...');
+                await supabase
+                  .from('alerts')
+                  .update({ client_id: currentClient.id })
+                  .neq('client_id', currentClient.id);
+                  
+                // Also claim alert groups just in case
+                await supabase
+                  .from('alert_groups')
+                  .update({ client_id: currentClient.id })
+                  .neq('client_id', currentClient.id);
+                  
+                fetchAlerts(0); // Refresh after claiming
+              }
+            }
+          } catch (e) {
+            console.warn('Alert sync healing failed:', e);
+          }
+        };
+        syncAlerts();
+      }
+
       let query = supabase
         .from('alerts')
-        .select('*, cases(title)', { count: 'exact' })
-        .eq('client_id', currentClient.id)
-        .order('timestamp', { ascending: false });
+        .select('*', { count: 'exact' });
+
+      // ROBUST FILTERING: We prefer client_id, but fallback to wazuh_group 
+      // if the environment is in the middle of a data sync or re-claim.
+      if (currentClient.wazuh_group) {
+        query = query.or(`client_id.eq.${currentClient.id},wazuh_group.eq.${currentClient.wazuh_group}`);
+      } else {
+        query = query.eq('client_id', currentClient.id);
+      }
+
+      query = query.order('timestamp', { ascending: false });
 
       if (!severityFilter.has('ALL')) {
         const severityValues = Array.from(severityFilter);
@@ -2611,8 +2741,8 @@ export default function AlertsPage({ user }: { user?: any }) {
       return;
     }
 
-    if (!supabase) {
-      setDebugInfo('Cannot update status: Supabase client not initialized.');
+    if (!supabase || !currentClient) {
+      setDebugInfo(`Cannot update status: ${!supabase ? 'Supabase client not initialized' : 'No active client selected'}.`);
       return;
     }
 
@@ -2735,6 +2865,7 @@ export default function AlertsPage({ user }: { user?: any }) {
 
   const handleBulkStatusChange = async (newStatus: string) => {
     if (selectedAlertIds.size === 0) return;
+    if (!supabase || !currentClient) return;
     
     if (newStatus === 'Closed') {
       setIsBulkClosing(true);
@@ -2757,14 +2888,15 @@ export default function AlertsPage({ user }: { user?: any }) {
     }
   };
 
-  const handleEscalateConfirm = async (priority: string, assignedTo: string, notes: string, generateAI: boolean) => {
+  const handleEscalateConfirm = async (priority: string, assignedTo: string, notes: string, action: 'escalate' | 'report') => {
     if (!escalatingAlert || !supabase || !currentClient) return;
 
     setIsGeneratingReport(true);
     try {
       let reportContent = {};
+      let newReport = null;
       
-      if (generateAI) {
+      if (action === 'report') {
         try {
           reportContent = await generateStructuredSOCReport({
             type: 'Escalation',
@@ -2774,48 +2906,94 @@ export default function AlertsPage({ user }: { user?: any }) {
         } catch (error) {
           console.error('AI Report Generation failed:', error);
         }
+
+        // Create Report in Supabase
+        const { data, error: reportError } = await supabase
+          .from('reports')
+          .insert({
+            client_id: currentClient.id,
+            title: `Incident Report: ${escalatingAlert.description}`,
+            type: 'incident_report',
+            status: 'draft',
+            content: reportContent,
+            alert_id: escalatingAlert.id,
+            agent_name: escalatingAlert.agent_name,
+            generated_by: user?.email,
+            date_from: escalatingAlert.timestamp,
+            date_to: escalatingAlert.timestamp
+          })
+          .select()
+          .single();
+
+        if (reportError) throw reportError;
+        newReport = data;
+
+        addNotification({
+          type: 'report_generated',
+          title: 'AI Report Generated',
+          description: `Successfully generated incident report for alert ${escalatingAlert.id}.`,
+          alertId: escalatingAlert.id
+        });
       }
 
       // 1. Update Alert Status in Supabase
       const { error: alertError } = await supabase
         .from('alerts')
         .update({ 
-          status: 'Investigating',
+          status: 'Escalated',
           resolution_notes: notes ? `Escalated: ${notes}` : 'Escalated to incident report'
         })
         .eq('id', escalatingAlert.id);
 
       if (alertError) throw alertError;
 
-      // 2. Create Report in Supabase
-      const { data: newReport, error: reportError } = await supabase
-        .from('reports')
-        .insert({
-          client_id: currentClient.id,
-          title: `Incident Report: ${escalatingAlert.description}`,
-          type: 'incident_report',
-          status: 'draft',
-          content: reportContent,
-          alert_id: escalatingAlert.id,
-          agent_name: escalatingAlert.agent_name,
-          generated_by: user?.email,
-          date_from: escalatingAlert.timestamp,
-          date_to: escalatingAlert.timestamp
-        })
-        .select()
-        .single();
+      // 2. Create Escalation in Supabase
+      const sev = escalatingAlert.severity?.toLowerCase() as keyof typeof settings.slaLimits;
+      const slaMinutes = settings.slaLimits?.[sev] || settings.slaLimitMinutes || 240;
 
-      if (reportError) throw reportError;
+      const { error: escalationError } = await supabase
+        .from('escalations')
+        .insert({
+          escalation_id: `ESC-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+          client_id: currentClient.id,
+          alert_id: escalatingAlert.id,
+          report_id: newReport?.id || null,
+          title: escalatingAlert.description,
+          priority: priority,
+          status: 'New',
+          severity: escalatingAlert.severity,
+          escalated_by: user?.email || 'System',
+          assigned_to: assignedTo || null,
+          escalation_notes: notes,
+          sla_deadline: new Date(Date.now() + slaMinutes * 60000).toISOString(),
+          sla_breached: false
+        });
+
+      if (escalationError) throw escalationError;
+      
+      addNotification({
+        type: 'alert_escalated',
+        title: 'Alert Escalated',
+        description: `Alert ${escalatingAlert.id} has been escalated to a new incident report.`,
+        agentName: escalatingAlert.agent_name,
+        alertId: escalatingAlert.id
+      });
 
       // 3. Update Local State
       setAlerts(prev => prev.map(a => 
         a.id === escalatingAlert.id 
-          ? { ...a, status: 'Investigating', has_report: true } 
+          ? { ...a, status: 'Escalated', has_report: !!newReport } 
           : a
       ));
 
       setEscalatingAlert(null);
-      setEscalationSuccessReport(newReport);
+
+      if (action === 'report' && newReport) {
+        setEscalationSuccessReport(newReport);
+      } else {
+        // Navigate to escalations page
+        window.dispatchEvent(new CustomEvent('navigate', { detail: 'escalations' }));
+      }
     } catch (error) {
       console.error('Escalation failed:', error);
       alert('Failed to escalate alert. Please try again.');
@@ -2829,8 +3007,8 @@ export default function AlertsPage({ user }: { user?: any }) {
       setDebugInfo('No alerts selected to merge.');
       return;
     }
-    if (!supabase) {
-      setDebugInfo('Supabase client not initialized.');
+    if (!supabase || !currentClient) {
+      setDebugInfo(`Cannot merge: ${!supabase ? 'Supabase client not initialized' : 'No active client selected'}.`);
       return;
     }
 
@@ -3038,8 +3216,13 @@ export default function AlertsPage({ user }: { user?: any }) {
       {/* Header & View Toggle */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Security Alerts</h2>
-          <p className="text-sm text-neutral-500 mt-1">
+                  <h2 className="text-2xl font-bold text-white tracking-tight">Security Alerts</h2>
+                  {debugInfo && (
+                    <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-400 font-mono">
+                      {debugInfo}
+                    </div>
+                  )}
+                  <p className="text-sm text-neutral-500 mt-1">
             {clientName ? `Monitoring Client: ${clientName}` : 'Wazuh Integration Active | Real-time monitoring and investigation'}
           </p>
         </div>
@@ -3316,7 +3499,7 @@ export default function AlertsPage({ user }: { user?: any }) {
                             <option value="Malicious">Malicious</option>
                             <option value="Suspicious">Suspicious</option>
                             <option value="Clean">Clean</option>
-                            <option value="Unknown">detect</option>
+                            <option value="Unknown">Unknown</option>
                           </select>
                           <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-neutral-500 pointer-events-none" />
                         </div>
@@ -3652,6 +3835,8 @@ export default function AlertsPage({ user }: { user?: any }) {
             setSelectedAlertForModal(prev => prev ? { ...prev, threat_intel: intel } : null);
           }
         }}
+        onEscalate={() => selectedAlertForModal && handleEscalateDirect(selectedAlertForModal)}
+        onGenerateReport={() => selectedAlertForModal && handleGenerateReport(selectedAlertForModal)}
       />
       {escalatingAlert && (
         <EscalationModal 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Bell, ShieldAlert, Server, CheckCircle2, Settings as SettingsIcon } from 'lucide-react';
+import { Bell, ShieldAlert, Server, CheckCircle2, Settings as SettingsIcon, Clock } from 'lucide-react';
 import { useNotifications, NotificationType } from '../../contexts/NotificationContext';
 import { cn } from '../../lib/utils';
 
@@ -9,6 +9,15 @@ export const SettingsPage = () => {
 
   const handleTogglePopups = () => {
     updateSettings({ allowPopups: !settings.allowPopups });
+  };
+
+  const handleSlaSeverityChange = (severity: string, minutes: number) => {
+    updateSettings({
+      slaLimits: {
+        ...settings.slaLimits,
+        [severity as keyof typeof settings.slaLimits]: minutes
+      }
+    });
   };
 
   const handleToggleSeverity = (type: NotificationType) => {
@@ -21,8 +30,9 @@ export const SettingsPage = () => {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <div className="mb-8">
+    <div className="flex-1 overflow-y-auto p-8 scrollbar-hide">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-8">
         <h1 className="text-2xl font-bold text-white flex items-center gap-3">
           <SettingsIcon className="w-6 h-6 text-neutral-400" />
           Settings
@@ -31,6 +41,51 @@ export const SettingsPage = () => {
       </div>
 
       <div className="space-y-6">
+        <section className="bg-[#0a0a0a] border border-neutral-800 rounded-xl overflow-hidden">
+          <div className="p-6 border-b border-neutral-800">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Clock className="w-5 h-5 text-neutral-400" />
+              SLA Configuration
+            </h2>
+            <p className="text-sm text-neutral-400 mt-1">Define the default time limit for security escalations.</p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {[
+                { key: 'critical', label: 'Critical Severity', color: 'text-red-500' },
+                { key: 'high', label: 'High Severity', color: 'text-orange-500' },
+                { key: 'medium', label: 'Medium Severity', color: 'text-yellow-500' },
+                { key: 'low', label: 'Low Severity', color: 'text-blue-500' },
+              ].map((sev) => (
+                <div key={sev.key} className="flex items-center justify-between p-4 bg-neutral-900/30 border border-neutral-800 rounded-lg">
+                  <div>
+                    <h3 className={cn("text-sm font-bold uppercase tracking-widest mb-1", sev.color)}>{sev.label}</h3>
+                    <p className="text-[10px] text-neutral-500">Response time limit</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="number"
+                      value={settings.slaLimits[sev.key as keyof typeof settings.slaLimits]}
+                      onChange={(e) => handleSlaSeverityChange(sev.key, parseInt(e.target.value) || 0)}
+                      className="w-20 bg-black border border-neutral-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors"
+                      min="1"
+                    />
+                    <span className="text-[10px] text-neutral-600 font-bold">MIN</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-lg">
+              <p className="text-[11px] text-blue-400 leading-relaxed">
+                <span className="font-bold uppercase mr-2">Pro Tip:</span> 
+                SLA timers will be automatically calculated based on the alert severity when an escalation is created.
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section className="bg-[#0a0a0a] border border-neutral-800 rounded-xl overflow-hidden">
           <div className="p-6 border-b border-neutral-800">
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -137,5 +192,6 @@ export const SettingsPage = () => {
         </section>
       </div>
     </div>
+  </div>
   );
 };

@@ -48,8 +48,10 @@ import {
 } from 'recharts';
 import { cn } from '../../lib/utils';
 import { SeverityBadge } from '../ui/StatusElements';
+import DOMPurify from 'dompurify';
 import { supabase } from '../../lib/supabase';
 import { useClient } from '../../contexts/ClientContext';
+import { useNotifications } from '../../contexts/NotificationContext';
 import { generateStructuredSOCReport } from '../../lib/gemini';
 import { downloadIncidentReport, downloadWeeklyReport, downloadExecutiveReport } from '../../utils/reportExporter';
 
@@ -121,6 +123,7 @@ const Badge = ({ children, variant }: { children: React.ReactNode, variant: stri
 
 export default function ReportsPage({ user: initialUser }: { user: any }) {
   const { currentClient } = useClient();
+  const { addNotification } = useNotifications();
   const [user, setUser] = useState<any>(initialUser);
   const [activeTab, setActiveTab] = useState<'history' | 'generate' | 'analytics'>('analytics');
   const [reports, setReports] = useState<Report[]>([]);
@@ -454,6 +457,12 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
           analystName: user.email
         });
         setAiUsageCount(prev => prev + 1);
+        addNotification({
+          type: 'report_generated',
+          title: 'AI Report Generated',
+          description: `Successfully generated ${type.replace('_', ' ')}: ${params.title}`,
+          alertId: params.alert?.id
+        });
       }
 
       const { data, error } = await supabase
@@ -505,6 +514,12 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
       }
       
       showToast('Word document generated successfully', 'success');
+      addNotification({
+        type: 'report_downloaded',
+        title: 'Word Document Exported',
+        description: `Successfully exported report to Word: ${report.title}`,
+        alertId: report.alert_id
+      });
     } catch (error) {
       console.error('Word Export Error:', error);
       showToast(error instanceof Error ? error.message : 'Failed to generate Word document', 'error');
@@ -545,8 +560,13 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
   };
 
   const generateSectionsHTML = (report: any, content: any) => {
-    const safeStr = (str: any) => str ? String(str).replace(/</g, '&lt;').replace(/>/g, '&gt;') : 'N/A';
-    const safeList = (arr: any[]) => arr && arr.length > 0 ? `<ul>${arr.map(item => `<li>${safeStr(item)}</li>`).join('')}</ul>` : '<p class="body-text">None</p>';
+    const safeStr = (str: any) => str ? DOMPurify.sanitize(String(str)) : 'N/A';
+    const safeList = (arr: any) => {
+      if (Array.isArray(arr)) {
+        return arr.length > 0 ? `<ul>${arr.map(item => `<li>${safeStr(item)}</li>`).join('')}</ul>` : '<p class="body-text">None</p>';
+      }
+      return `<p class="body-text">${safeStr(arr)}</p>`;
+    };
 
     if (report.type !== 'incident_report') {
       return `
@@ -563,26 +583,18 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
         <div class="section-block">
           <div class="section-header">
             <span class="section-num">02</span>
-            <h2 class="section-title">SECURITY OVERVIEW</h2>
+            <h2 class="section-title">INCIDENT DETAILS</h2>
           </div>
-          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
-            <div style="background: #f9fafb; border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; text-align: center;">
-              <p style="font-size: 8px; font-weight: 700; color: #737373; text-transform: uppercase; margin-bottom: 4px;">Total Alerts</p>
-              <p style="font-size: 16px; font-weight: 900; color: #2563eb; margin: 0;">${content?.overview?.total_alerts || 0}</p>
-            </div>
-            <div style="background: #f9fafb; border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; text-align: center;">
-              <p style="font-size: 8px; font-weight: 700; color: #737373; text-transform: uppercase; margin-bottom: 4px;">Critical</p>
-              <p style="font-size: 16px; font-weight: 900; color: #dc2626; margin: 0;">${content?.overview?.critical_count || 0}</p>
-            </div>
-            <div style="background: #f9fafb; border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; text-align: center;">
-              <p style="font-size: 8px; font-weight: 700; color: #737373; text-transform: uppercase; margin-bottom: 4px;">High</p>
-              <p style="font-size: 16px; font-weight: 900; color: #ea580c; margin: 0;">${content?.overview?.high_count || 0}</p>
-            </div>
-            <div style="background: #f9fafb; border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; text-align: center;">
-              <p style="font-size: 8px; font-weight: 700; color: #737373; text-transform: uppercase; margin-bottom: 4px;">Resolved</p>
-              <p style="font-size: 16px; font-weight: 900; color: #16a34a; margin: 0;">${content?.overview?.resolved_count || 0}</p>
-            </div>
-          </div>
+          <table>
+            <tr><td class="td-label">Alert ID</td><td class="td-value">${safeStr(content?.incident_details?.alert_id)}</td></tr>
+            <tr><td class="td-label">Severity</td><td class="td-value-red">${safeStr(content?.incident_details?.severity)}</td></tr>
+            <tr><td class="td-label">Event Timestamp</td><td class="td-value">${safeStr(content?.incident_details?.timestamp)}</td></tr>
+            <tr><td class="td-label">Agent Name</td><td class="td-value">${safeStr(content?.incident_details?.agent)}</td></tr>
+            <tr><td class="td-label">Source IP</td><td class="td-value">${safeStr(content?.incident_details?.source_ip)}</td></tr>
+            <tr><td class="td-label">Destination IP</td><td class="td-value">${safeStr(content?.incident_details?.destination_ip || 'N/A')}</td></tr>
+            <tr><td class="td-label">Priority</td><td class="td-value">${safeStr(content?.incident_details?.priority || 'P1')}</td></tr>
+            <tr><td class="td-label">Assigned To</td><td class="td-value">${safeStr(content?.incident_details?.assigned_to || 'AI Analyst')}</td></tr>
+          </table>
         </div>
 
         <div class="section-block">
@@ -700,8 +712,8 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
           <tr><td class="td-label">Agent Name</td><td class="td-value">${safeStr(content?.incident_details?.agent)}</td></tr>
           <tr><td class="td-label">Source IP</td><td class="td-value">${safeStr(content?.incident_details?.source_ip)}</td></tr>
           <tr><td class="td-label">Destination IP</td><td class="td-value">${safeStr(content?.incident_details?.destination_ip || 'N/A')}</td></tr>
-          <tr><td class="td-label">Priority</td><td class="td-value">P1</td></tr>
-          <tr><td class="td-label">Assigned To</td><td class="td-value">AI Analyst</td></tr>
+          <tr><td class="td-label">Priority</td><td class="td-value">${safeStr(content?.incident_details?.priority || 'P1')}</td></tr>
+          <tr><td class="td-label">Assigned To</td><td class="td-value">${safeStr(content?.incident_details?.assigned_to || 'AI Analyst')}</td></tr>
         </table>
       </div>
 
@@ -737,12 +749,12 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
             </tr>
           </thead>
           <tbody>
-            ${(content?.ioc_analysis?.iocs || []).map((ioc: any) => `
+            ${(Array.isArray(content?.ioc_analysis) ? content.ioc_analysis : (content?.ioc_analysis?.iocs || [])).map((ioc: any) => `
               <tr>
                 <td style="font-weight: 700; color: #737373;">${safeStr(ioc.type)}</td>
-                <td style="font-weight: 700; color: #2563eb;">${safeStr(ioc.value)}</td>
+                <td style="font-weight: 700; color: #2563eb; word-break: break-all;">${safeStr(ioc.value)}</td>
                 <td style="font-weight: 900; color: ${ioc.verdict?.toLowerCase() === 'malicious' ? '#dc2626' : '#d97706'}; text-transform: uppercase; font-size: 9px;">${safeStr(ioc.verdict)}</td>
-                <td style="font-weight: 700; color: #171717;">${safeStr(content?.ioc_analysis?.confidence || '85')}/100</td>
+                <td style="font-weight: 700; color: #171717;">${safeStr(ioc.threat_score || content?.ioc_analysis?.confidence || '85')}</td>
                 <td style="font-style: italic; color: #a3a3a3;">${safeStr(ioc.source || 'Internal Alert Logs')}</td>
               </tr>
             `).join('')}
@@ -1061,6 +1073,12 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
     if (printWindow) {
       printWindow.document.write(html);
       printWindow.document.close();
+      addNotification({
+        type: 'report_downloaded',
+        title: 'Report Exported',
+        description: `Successfully exported report: ${selectedReport?.title}`,
+        alertId: selectedReport?.alert_id
+      });
     } else {
       showToast('Please allow popups to generate PDF', 'error');
     }
@@ -1686,98 +1704,63 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                       </div>
                     </section>
 
-                    {/* 02 INCIDENT DETAILS / OVERVIEW */}
+                    {/* 02 INCIDENT DETAILS */}
                     <section className="space-y-4">
                       <div className="section-header">
                         <span className="section-num">02</span>
-                        <h2 className="section-title">
-                          {selectedReport.type === 'incident_report' ? 'Incident Details' : 'Security Overview'}
-                        </h2>
+                        <h2 className="section-title">Incident Details</h2>
                       </div>
 
-                      {selectedReport.type === 'incident_report' && editContent?.incident_details ? (
-                        <table>
-                          <tbody className="divide-y divide-neutral-200">
-                            {[
-                              { key: 'alert_id', label: 'Alert ID', value: editContent.incident_details.alert_id },
-                              { key: 'severity', label: 'Severity', value: editContent.incident_details.severity, isRed: true },
-                              { key: 'timestamp', label: 'Event Timestamp', value: editContent.incident_details.timestamp },
-                              { key: 'agent', label: 'Agent Name', value: editContent.incident_details.agent },
-                              { key: 'source_ip', label: 'Source IP', value: editContent.incident_details.source_ip || 'N/A' },
-                              { key: 'dest_ip', label: 'Destination IP', value: editContent.incident_details.dest_ip || 'N/A' },
-                              { key: 'priority', label: 'Priority', value: editContent.incident_details.priority || 'P1' },
-                              { key: 'assigned_to', label: 'Assigned To', value: editContent.incident_details.assigned_to || 'AI Analyst' }
-                            ].map((item, i) => (
-                              <tr key={item.label}>
-                                <td className="td-label">{item.label}</td>
-                                <td className={cn("td-value", item.isRed && "td-value-red")}>
-                                  {isEditing ? (
-                                    ['agent', 'source_ip', 'dest_ip'].includes(item.key) ? (
-                                      <input 
-                                        value={item.value}
-                                        onChange={(e) => {
-                                          const newContent = { ...editContent };
-                                          newContent.incident_details[item.key] = e.target.value;
-                                          setEditContent(newContent);
-                                        }}
-                                        className="w-full bg-transparent border-none p-0 focus:ring-0 font-bold text-blue-600"
-                                      />
-                                    ) : (
-                                      <textarea 
-                                        value={item.value}
-                                        onChange={(e) => {
-                                          const newContent = { ...editContent };
-                                          newContent.incident_details[item.key] = e.target.value;
-                                          setEditContent(newContent);
-                                        }}
-                                        className="w-full bg-transparent border-none p-0 focus:ring-0 font-bold text-blue-600 resize-none min-h-[20px]"
-                                        rows={1}
-                                        onInput={(e: any) => {
-                                          e.target.style.height = 'auto';
-                                          e.target.style.height = e.target.scrollHeight + 'px';
-                                        }}
-                                      />
-                                    )
-                                  ) : item.value}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <table>
+                        <tbody className="divide-y divide-neutral-200">
                           {[
-                            { key: 'total_alerts', label: 'Total Alerts', value: editContent?.overview?.total_alerts, color: 'text-blue-600' },
-                            { key: 'critical_count', label: 'Critical', value: editContent?.overview?.critical_count, color: 'text-red-600' },
-                            { key: 'high_count', label: 'High', value: editContent?.overview?.high_count, color: 'text-orange-600' },
-                            { key: 'resolved_count', label: 'Resolved', value: editContent?.overview?.resolved_count, color: 'text-green-600' },
-                            ...(selectedReport.type === 'executive' ? [{ key: 'overall_risk_level', label: 'Risk Level', value: editContent?.overall_risk_level || 'LOW', color: 'text-purple-600', isRoot: true }] : [])
-                          ].map(stat => (
-                            <div key={stat.label} className="p-4 bg-neutral-50 border border-neutral-200 rounded-lg text-center">
-                              <p className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mb-1">{stat.label}</p>
-                              {isEditing ? (
-                                <input 
-                                  type={stat.key === 'overall_risk_level' ? 'text' : 'number'}
-                                  value={stat.value ?? (stat.key === 'overall_risk_level' ? 'LOW' : 0)}
-                                  onChange={(e) => {
-                                    const newContent = { ...editContent };
-                                    if (stat.isRoot) {
-                                      newContent[stat.key] = e.target.value;
-                                    } else {
-                                      if (!newContent.overview) newContent.overview = {};
-                                      newContent.overview[stat.key] = parseInt(e.target.value) || 0;
-                                    }
-                                    setEditContent(newContent);
-                                  }}
-                                  className={cn("w-full bg-white border border-neutral-200 rounded text-center text-xl font-black focus:outline-none focus:ring-1 focus:ring-blue-500", stat.color)}
-                                />
-                              ) : (
-                                <p className={cn("text-xl font-black", stat.color)}>{stat.value ?? (stat.key === 'overall_risk_level' ? 'LOW' : 0)}</p>
-                              )}
-                            </div>
+                            { key: 'alert_id', label: 'Alert ID', value: editContent?.incident_details?.alert_id || 'N/A' },
+                            { key: 'severity', label: 'Severity', value: editContent?.incident_details?.severity || 'N/A', isRed: true },
+                            { key: 'timestamp', label: 'Event Timestamp', value: editContent?.incident_details?.timestamp || 'N/A' },
+                            { key: 'agent', label: 'Agent Name', value: editContent?.incident_details?.agent || 'N/A' },
+                            { key: 'source_ip', label: 'Source IP', value: editContent?.incident_details?.source_ip || 'N/A' },
+                            { key: 'dest_ip', label: 'Destination IP', value: editContent?.incident_details?.dest_ip || 'N/A' },
+                            { key: 'priority', label: 'Priority', value: editContent?.incident_details?.priority || 'P1' },
+                            { key: 'assigned_to', label: 'Assigned To', value: editContent?.incident_details?.assigned_to || 'AI Analyst' }
+                          ].map((item, i) => (
+                            <tr key={item.label}>
+                              <td className="td-label">{item.label}</td>
+                              <td className={cn("td-value", item.isRed && "td-value-red")}>
+                                {isEditing ? (
+                                  ['agent', 'source_ip', 'dest_ip'].includes(item.key) ? (
+                                    <input 
+                                      value={item.value}
+                                      onChange={(e) => {
+                                        const newContent = { ...editContent };
+                                        if (!newContent.incident_details) newContent.incident_details = {};
+                                        newContent.incident_details[item.key] = e.target.value;
+                                        setEditContent(newContent);
+                                      }}
+                                      className="w-full bg-transparent border-none p-0 focus:ring-0 font-bold text-blue-600"
+                                    />
+                                  ) : (
+                                    <textarea 
+                                      value={item.value}
+                                      onChange={(e) => {
+                                        const newContent = { ...editContent };
+                                        if (!newContent.incident_details) newContent.incident_details = {};
+                                        newContent.incident_details[item.key] = e.target.value;
+                                        setEditContent(newContent);
+                                      }}
+                                      className="w-full bg-transparent border-none p-0 focus:ring-0 font-bold text-blue-600 resize-none min-h-[20px]"
+                                      rows={1}
+                                      onInput={(e: any) => {
+                                        e.target.style.height = 'auto';
+                                        e.target.style.height = e.target.scrollHeight + 'px';
+                                      }}
+                                    />
+                                  )
+                                ) : item.value}
+                              </td>
+                            </tr>
                           ))}
-                        </div>
-                      )}
+                        </tbody>
+                      </table>
                     </section>
                     </div>
 
@@ -1813,7 +1796,7 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                         <div className="p-6 bg-blue-50/30 border border-blue-100 rounded-lg">
                           {isEditing ? (
                             <textarea 
-                              value={selectedReport.type === 'weekly_summary' ? editContent.ai_insights : editContent.business_impact || ""}
+                              value={selectedReport.type === 'weekly_summary' ? editContent?.ai_insights : editContent?.business_impact || ""}
                               onChange={(e) => {
                                 const newContent = { ...editContent };
                                 if (selectedReport.type === 'weekly_summary') {
@@ -1827,7 +1810,7 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                             />
                           ) : (
                             <p className="text-xs text-neutral-700 leading-relaxed italic break-words whitespace-pre-wrap">
-                              {selectedReport.type === 'weekly_summary' ? editContent.ai_insights : (editContent.business_impact || 'No business impact analysis provided.')}
+                              {selectedReport.type === 'weekly_summary' ? editContent?.ai_insights : (editContent?.business_impact || 'No business impact analysis provided.')}
                             </p>
                           )}
                         </div>
@@ -1952,7 +1935,7 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-neutral-200">
-                            {(selectedReport.type === 'weekly_summary' ? (editContent.top_threats || []) : (editContent.notable_incidents || [])).map((item: any, i: number) => (
+                            {(selectedReport.type === 'weekly_summary' ? (editContent?.top_threats || []) : (editContent?.notable_incidents || [])).map((item: any, i: number) => (
                               <tr key={i}>
                                 <td className="font-bold text-neutral-900 break-words">
                                   {isEditing ? (
@@ -2023,7 +2006,7 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                     )}
 
                     {/* 04 IOC ANALYSIS (Incident) */}
-                    {selectedReport.type === 'incident_report' && editContent?.ioc_analysis?.iocs && (
+                    {selectedReport.type === 'incident_report' && (
                       <section className="space-y-4">
                         <div className="section-header">
                           <span className="section-num">04</span>
@@ -2042,7 +2025,7 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-neutral-200">
-                            {editContent.ioc_analysis.iocs.map((ioc: any, i: number) => (
+                            {(Array.isArray(editContent?.ioc_analysis) ? editContent.ioc_analysis : (editContent?.ioc_analysis?.iocs || [])).map((ioc: any, i: number) => (
                               <tr key={i}>
                                 <td className="text-neutral-500 font-bold uppercase">
                                   {isEditing ? (
@@ -2050,7 +2033,8 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                                       value={ioc.type}
                                       onChange={(e) => {
                                         const newContent = { ...editContent };
-                                        newContent.ioc_analysis.iocs[i].type = e.target.value;
+                                        const list = Array.isArray(newContent.ioc_analysis) ? newContent.ioc_analysis : newContent.ioc_analysis.iocs;
+                                        list[i].type = e.target.value;
                                         setEditContent(newContent);
                                       }}
                                       className="w-full bg-transparent border-none p-0 focus:ring-0 text-neutral-500 font-bold uppercase"
@@ -2063,7 +2047,8 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                                       value={ioc.value}
                                       onChange={(e) => {
                                         const newContent = { ...editContent };
-                                        newContent.ioc_analysis.iocs[i].value = e.target.value;
+                                        const list = Array.isArray(newContent.ioc_analysis) ? newContent.ioc_analysis : newContent.ioc_analysis.iocs;
+                                        list[i].value = e.target.value;
                                         setEditContent(newContent);
                                       }}
                                       className="w-full bg-transparent border-none p-0 focus:ring-0 text-blue-600 font-mono font-bold"
@@ -2076,7 +2061,8 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                                       value={ioc.verdict}
                                       onChange={(e) => {
                                         const newContent = { ...editContent };
-                                        newContent.ioc_analysis.iocs[i].verdict = e.target.value;
+                                        const list = Array.isArray(newContent.ioc_analysis) ? newContent.ioc_analysis : newContent.ioc_analysis.iocs;
+                                        list[i].verdict = e.target.value;
                                         setEditContent(newContent);
                                       }}
                                       className="bg-neutral-100 border-none rounded text-[8px] font-black uppercase focus:ring-0"
@@ -2099,12 +2085,13 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                                       value={ioc.threat_score || '85'}
                                       onChange={(e) => {
                                         const newContent = { ...editContent };
-                                        newContent.ioc_analysis.iocs[i].threat_score = e.target.value;
+                                        const list = Array.isArray(newContent.ioc_analysis) ? newContent.ioc_analysis : newContent.ioc_analysis.iocs;
+                                        list[i].threat_score = e.target.value;
                                         setEditContent(newContent);
                                       }}
                                       className="w-12 bg-transparent border-none p-0 focus:ring-0 font-bold text-neutral-900"
                                     />
-                                  ) : (ioc.threat_score || '85')}/100
+                                  ) : (ioc.threat_score || '85')}
                                 </td>
                                 <td className="text-neutral-400 font-medium italic">
                                   {isEditing ? (
@@ -2112,7 +2099,8 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                                       value={ioc.source}
                                       onChange={(e) => {
                                         const newContent = { ...editContent };
-                                        newContent.ioc_analysis.iocs[i].source = e.target.value;
+                                        const list = Array.isArray(newContent.ioc_analysis) ? newContent.ioc_analysis : newContent.ioc_analysis.iocs;
+                                        list[i].source = e.target.value;
                                         setEditContent(newContent);
                                       }}
                                       className="w-full bg-transparent border-none p-0 focus:ring-0 text-neutral-400 font-medium italic"
@@ -2124,7 +2112,8 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                                     <button 
                                       onClick={() => {
                                         const newContent = { ...editContent };
-                                        newContent.ioc_analysis.iocs.splice(i, 1);
+                                        const list = Array.isArray(newContent.ioc_analysis) ? newContent.ioc_analysis : newContent.ioc_analysis.iocs;
+                                        list.splice(i, 1);
                                         setEditContent(newContent);
                                       }}
                                       className="text-red-500 hover:text-red-600"
@@ -2141,7 +2130,10 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                           <button 
                             onClick={() => {
                               const newContent = { ...editContent };
-                              newContent.ioc_analysis.iocs.push({ type: 'IP', value: '', verdict: 'Suspicious', threat_score: '50', source: 'Manual Entry' });
+                              if (!Array.isArray(newContent.ioc_analysis)) {
+                                newContent.ioc_analysis = newContent.ioc_analysis?.iocs || [];
+                              }
+                              newContent.ioc_analysis.push({ type: 'IP', value: '', verdict: 'Suspicious', threat_score: '50', source: 'Manual Entry' });
                               setEditContent(newContent);
                             }}
                             className="w-full py-2 bg-neutral-50 hover:bg-neutral-100 text-[9px] font-bold text-neutral-500 uppercase tracking-widest border-t border-neutral-200 flex items-center justify-center gap-2"
@@ -2192,7 +2184,7 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-neutral-200">
-                                {(editContent.agent_summary || []).map((agent: any, i: number) => (
+                                {(editContent?.agent_summary || []).map((agent: any, i: number) => (
                                   <tr key={i}>
                                     <td className="font-bold text-neutral-900">{agent.agent_name}</td>
                                     <td className="text-center text-neutral-700">{agent.alert_count}</td>
@@ -2212,7 +2204,7 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                             <h4 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Key Operational Findings</h4>
                             {isEditing ? (
                               <textarea 
-                                value={editContent.key_findings?.join('\n') || ""}
+                                value={editContent?.key_findings?.join('\n') || ""}
                                 onChange={(e) => {
                                   const newContent = { ...editContent };
                                   newContent.key_findings = e.target.value.split('\n').filter((s: string) => s.trim() !== '');
@@ -2223,7 +2215,7 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                               />
                             ) : (
                               <ul className="space-y-2">
-                                {(editContent.key_findings || ['No unusual activity detected', 'All critical patches applied']).map((finding: string, i: number) => (
+                                {(editContent?.key_findings || ['No unusual activity detected', 'All critical patches applied']).map((finding: string, i: number) => (
                                   <li key={i} className="text-xs text-neutral-700 flex gap-3 items-start break-words">
                                     <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0 mt-1.5" />
                                     {finding}
@@ -2247,12 +2239,12 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                         <table>
                           <tbody className="divide-y divide-neutral-200">
                             {[
-                              { key: 'affected_systems', label: 'Affected Systems', value: editContent.impact_assessment.affected_systems?.join(', ') || editContent.impact_assessment.affected_systems || 'N/A' },
-                              { key: 'data_at_risk', label: 'Data at Risk', value: editContent.impact_assessment.data_at_risk || 'None identified' },
-                              { key: 'business_impact', label: 'Business Impact', value: editContent.impact_assessment.business_impact || 'Minimal' },
-                              { key: 'containment_status', label: 'Containment Status', value: editContent.impact_assessment.containment_status || 'Contained' },
-                              { key: 'is_true_positive', label: 'True Positive', value: editContent.impact_assessment.is_true_positive || 'Yes' },
-                              { key: 'ioc_confidence', label: 'Confidence Level', value: `${editContent.impact_assessment.ioc_confidence || '95'}%` }
+                              { key: 'affected_systems', label: 'Affected Systems', value: editContent?.impact_assessment?.affected_systems?.join(', ') || editContent?.impact_assessment?.affected_systems || 'N/A' },
+                              { key: 'data_at_risk', label: 'Data at Risk', value: editContent?.impact_assessment?.data_at_risk || 'None identified' },
+                              { key: 'business_impact', label: 'Business Impact', value: editContent?.impact_assessment?.business_impact || 'Minimal' },
+                              { key: 'containment_status', label: 'Containment Status', value: editContent?.impact_assessment?.containment_status || 'Contained' },
+                              { key: 'is_true_positive', label: 'True Positive', value: editContent?.impact_assessment?.is_true_positive || 'Yes' },
+                              { key: 'ioc_confidence', label: 'Confidence Level', value: `${editContent?.impact_assessment?.ioc_confidence || '95'}%` }
                             ].map((item, i) => (
                               <tr key={item.label}>
                                 <td className="td-label">{item.label}</td>
@@ -2369,13 +2361,13 @@ export default function ReportsPage({ user: initialUser }: { user: any }) {
                         <div className="p-6 bg-neutral-50 border border-neutral-100 rounded-lg">
                           {isEditing ? (
                             <textarea 
-                              value={editContent.analyst_notes || ""}
+                              value={editContent?.analyst_notes || ""}
                               onChange={(e) => setEditContent({ ...editContent, analyst_notes: e.target.value })}
                               className="w-full bg-white border border-neutral-200 rounded-lg p-3 text-xs text-blue-600 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px]"
                             />
                           ) : (
                             <p className="text-xs text-blue-600 font-bold leading-relaxed whitespace-pre-wrap italic break-words">
-                              {editContent.analyst_notes || 'No additional analyst notes provided.'}
+                              {editContent?.analyst_notes || 'No additional analyst notes provided.'}
                             </p>
                           )}
                         </div>

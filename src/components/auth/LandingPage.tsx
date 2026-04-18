@@ -145,7 +145,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
       {/* Left Side: Marketing Section */}
       <div className="lg:w-1/2 relative flex flex-col justify-center px-8 lg:px-20 py-12 border-r border-white/10 overflow-hidden z-10">
         {/* Hero Glow */}
-        <div className="absolute top-0 left-0 w-full h-full bg-blue-500/5 blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute top-0 left-0 w-full h-full bg-white/[0.02] blur-[120px] rounded-full pointer-events-none" />
         
         <div className="relative z-10">
           {onBack && (
@@ -194,15 +194,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
                 className="bg-white/[0.02] border border-white/10 rounded-2xl p-8 backdrop-blur-sm overflow-hidden relative"
               >
                 <div className="absolute top-0 right-0 p-6">
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Active Intelligence</span>
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                    <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Active Intelligence</span>
                   </div>
                 </div>
 
                 <div className="flex items-start gap-8">
-                  <div className="w-16 h-16 rounded-2xl bg-blue-600 flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.3)]">
-                    <Shield className="w-8 h-8 text-white" />
+                  <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-[0_0_40px_rgba(255,255,255,0.1)]">
+                    <Shield className="w-8 h-8 text-black" />
                   </div>
                   <div className="flex-1">
                     <h3 className="text-xl font-bold text-white mb-2 tracking-tight">KastronSec Core</h3>
@@ -219,7 +219,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
                       key={i}
                       animate={{ 
                         height: [10, Math.random() * 40 + 10, 10],
-                        opacity: [0.2, 0.5, 0.2]
+                        opacity: [0.1, 0.3, 0.1]
                       }}
                       transition={{ 
                         duration: 2 + Math.random(), 
@@ -227,7 +227,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
                         ease: "easeInOut",
                         delay: i * 0.05 
                       }}
-                      className="flex-1 bg-blue-500/30 rounded-t-[1px]"
+                      className="flex-1 bg-white/20 rounded-t-[1px]"
                     />
                   ))}
                 </div>
@@ -243,10 +243,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
                     transition={{ duration: 0.5, delay: 0.2 + (index * 0.1) }}
                     className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 hover:bg-white/[0.04] hover:border-white/20 transition-all duration-500 group"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:border-blue-500/30 transition-all duration-500">
-                      <feature.icon className="w-5 h-5 text-blue-500" />
+                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:border-white/30 transition-all duration-500">
+                      <feature.icon className="w-5 h-5 text-white" />
                     </div>
-                    <h4 className="text-white font-bold text-sm mb-2 tracking-tight group-hover:text-blue-400 transition-colors">
+                    <h4 className="text-white font-bold text-sm mb-2 tracking-tight group-hover:text-neutral-300 transition-colors">
                       {feature.title}
                     </h4>
                     <p className="text-neutral-500 text-[11px] leading-relaxed font-medium">
@@ -256,7 +256,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
                     {/* Professional Metric Label */}
                     <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
                       <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">Status</span>
-                      <span className="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Optimized</span>
+                      <span className="text-[9px] font-bold text-white uppercase tracking-widest">Optimized</span>
                     </div>
                   </motion.div>
                 ))}
@@ -264,7 +264,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
             </div>
 
             {/* Subtle Decorative Elements */}
-            <div className="absolute -bottom-12 -left-12 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-64 h-64 bg-white/[0.02] blur-[100px] rounded-full pointer-events-none" />
           </div>
         </div>
       </div>

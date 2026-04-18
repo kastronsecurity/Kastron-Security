@@ -2,10 +2,11 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
 
 dotenv.config();
 
@@ -31,8 +32,53 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Security Headers
+  app.use(helmet({
+    contentSecurityPolicy: false, // Vite handles CSP in dev
+    crossOriginEmbedderPolicy: false
+  }));
+
   app.use(express.json());
   app.use(cors());
+
+  // Rate Limiting
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests, please try again later." }
+  });
+
+  // Apply rate limiter to all API routes
+  app.use("/api/", apiLimiter);
+
+  // PII Masking utility
+  const maskPII = (obj: any): any => {
+    if (!obj) return obj;
+    const masked = JSON.parse(JSON.stringify(obj));
+    const mask = (val: string) => {
+      if (typeof val !== 'string') return val;
+      // Mask IP addresses
+      const maskedIp = val.replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, (match) => {
+        const parts = match.split('.');
+        return `${parts[0]}.${parts[1]}.[MASKED].[MASKED]`;
+      });
+      return maskedIp;
+    };
+
+    const traverse = (o: any) => {
+      for (const key in o) {
+        if (typeof o[key] === 'object' && o[key] !== null) {
+          traverse(o[key]);
+        } else if (typeof o[key] === 'string') {
+          o[key] = mask(o[key]);
+        }
+      }
+    };
+    traverse(masked);
+    return masked;
+  };
 
   // Auth Middleware
   const authenticateUser = async (req: any, res: any, next: any) => {
@@ -111,7 +157,7 @@ async function startServer() {
 
     try {
       const wazuhAlert = req.body;
-      console.log('Wazuh Alert Body:', JSON.stringify(wazuhAlert).substring(0, 500) + '...');
+      console.log('Wazuh Alert Body (Sanitized):', JSON.stringify(maskPII(wazuhAlert)).substring(0, 500) + '...');
       
       if (!supabaseUrl || !supabaseKey) {
         console.error('Supabase credentials missing in server.ts');
@@ -203,7 +249,7 @@ async function startServer() {
         client_id: clientId
       };
 
-      console.log('Mapped Alert for Supabase:', JSON.stringify(mappedAlert).substring(0, 500) + '...');
+      console.log('Mapped Alert for Supabase (Sanitized):', JSON.stringify(maskPII(mappedAlert)).substring(0, 500) + '...');
 
       const { error } = await supabase
         .from('alerts')
@@ -406,39 +452,6 @@ async function startServer() {
     }
   });
 
-  // Gemini AI Proxy Route (Matches Netlify Function behavior)
-  app.post("/api/gemini-analysis", authenticateUser, async (req, res) => {
-    const { prompt } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_API_KEY not configured" });
-    }
-
-    if (!prompt) {
-      return res.status(400).json({ error: "Missing prompt" });
-    }
-
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json"
-        }
-      });
-
-      res.json(JSON.parse(response.text || "{}"));
-    } catch (error) {
-      console.error("Gemini Proxy Error:", error);
-      res.status(500).json({ error: "Internal Server Error", details: String(error) });
-    }
-  });
-
   // Wazuh Group Creation Route (Server-side to protect credentials)
   app.post("/api/wazuh/groups", authenticateUser, async (req, res) => {
     const { groupId } = req.body;
@@ -455,8 +468,9 @@ async function startServer() {
     }
 
     try {
-      // For Wazuh self-signed certificates
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+      // SECURITY: Removed process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+      // This was a critical vulnerability that disabled TLS checking globally.
+      // To connect to Wazuh with self-signed certificates, please use a valid CA.
 
       // 1. Authenticate with Wazuh
       const authRes = await fetch(`https://${wazuhIp}:55000/security/user/authenticate`, {
@@ -472,7 +486,7 @@ async function startServer() {
         throw new Error(`Wazuh authentication failed: ${authRes.status} ${errText}`);
       }
 
-      const authData: any = await authRes.json();
+       const authData: any = await authRes.json();
       const token = authData.data.token;
 
       // 2. Create Group
@@ -485,9 +499,6 @@ async function startServer() {
         body: JSON.stringify({ group_id: groupId })
       });
 
-      // Reset TLS check for other requests
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
-
       if (!groupRes.ok && groupRes.status !== 400) { 
         const errText = await groupRes.text();
         throw new Error(`Wazuh group creation failed: ${groupRes.status} ${errText}`);
@@ -495,7 +506,6 @@ async function startServer() {
 
       res.json({ status: "success", message: "Wazuh group created or already exists" });
     } catch (error) {
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
       console.error("Wazuh Group Error:", error);
       res.status(500).json({ error: "Failed to create Wazuh group", details: String(error) });
     }

@@ -13,7 +13,13 @@ import {
   AlertCircle,
   ExternalLink,
   Lock,
-  LogOut
+  LogOut,
+  Globe,
+  Settings,
+  Cloud,
+  Copy,
+  Clock,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
@@ -24,14 +30,30 @@ interface OnboardingPageProps {
   onComplete: () => void;
 }
 
+const WAZUH_IP = import.meta.env.VITE_WAZUH_IP || 'your-wazuh-server-ip';
+
 const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => {
   const [step, setStep] = useState(1);
   const [verifying, setVerifying] = useState(false);
-  const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installKey, setInstallKey] = useState<string | null>(null);
   const [wazuhGroup, setWazuhGroup] = useState<string | null>(null);
   const [loadingKey, setLoadingKey] = useState(true);
+  const [client, setClient] = useState<any>(null);
+
+  // Wizard state
+  const [selections, setSelections] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [firewallConfig, setFirewallConfig] = useState({
+    brand: '',
+    name: '',
+    ip: '',
+    port: 514,
+    protocol: 'UDP' as 'UDP' | 'TCP'
+  });
+  const [agents, setAgents] = useState<any[]>([]);
+  const [firewallStatus, setFirewallStatus] = useState<'none' | 'pending' | 'received'>('none');
+  const [skipped, setSkipped] = useState(false);
 
   const fetchClientData = async () => {
     if (!supabase || !user) return;
@@ -50,24 +72,43 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
     try {
       const { data, error } = await supabase
         .from('clients')
-        .select('install_key, wazuh_group')
+        .select('*')
         .eq('user_id', user.id)
         .single();
       
       if (!error && data) {
+        setClient(data);
         setInstallKey(data.install_key);
         setWazuhGroup(data.wazuh_group);
         
-        // If metadata is missing or different, update it to stay in sync
-        if (data.install_key !== metaInstallKey) {
-          await supabase.auth.updateUser({
-            data: { 
-              install_key: data.install_key, 
-              wazuh_group: data.wazuh_group 
-            }
-          });
+        // Restore step if needed
+        if (data.onboarding_step) {
+          setStep(data.onboarding_step);
         }
-      } else if (error && (error.code === 'PGRST116' || error.message?.includes('no rows'))) {
+
+        // Restore selections
+        if (data.infrastructure) {
+          const infra = data.infrastructure;
+          const newSelections = [];
+          if (infra.has_windows) newSelections.push('windows');
+          if (infra.has_linux) newSelections.push('linux');
+          if (infra.has_firewall) newSelections.push('firewall');
+          if (infra.has_webserver) newSelections.push('webserver');
+          if (infra.has_cloud) newSelections.push('cloud');
+          if (infra.has_custom) newSelections.push('custom');
+          setSelections(newSelections);
+
+          if (infra.has_firewall) {
+            setFirewallConfig(prev => ({
+              ...prev,
+              brand: infra.firewall_type || '',
+              ip: infra.firewall_ip || '',
+              port: infra.syslog_port || 514,
+              protocol: infra.syslog_protocol || 'UDP'
+            }));
+          }
+        }
+
         // No record found — create one for this user
         console.log('No client record found, creating one...');
         
@@ -135,23 +176,135 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
     { name: 'macOS', icon: Cpu, version: 'v2.4.1', size: '35MB', color: 'text-neutral-400' }
   ];
 
+  const handleStep1Next = async () => {
+    if (selections.length === 0 || !supabase || !client) return;
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('clients')
+        .update({
+          infrastructure: {
+            has_windows: selections.includes('windows'),
+            has_linux: selections.includes('linux'),
+            has_firewall: selections.includes('firewall'),
+            has_webserver: selections.includes('webserver'),
+            has_cloud: selections.includes('cloud'),
+            has_custom: selections.includes('custom')
+          },
+          onboarding_step: selections.includes('firewall') ? 2 : 3
+        })
+        .eq('id', client.id);
+
+      if (error) throw error;
+      setStep(selections.includes('firewall') ? 2 : 3);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleStep2Save = async () => {
+    if (!supabase || !client) return;
+    if (!firewallConfig.brand || !firewallConfig.name || !firewallConfig.ip) {
+      setError("Please fill in all required fields");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // 1. Update client
+      const { error: clientError } = await supabase
+        .from('clients')
+        .update({
+          infrastructure: {
+            ...client.infrastructure,
+            has_firewall: true,
+            firewall_type: firewallConfig.brand,
+            firewall_ip: firewallConfig.ip,
+            syslog_port: firewallConfig.port,
+            syslog_protocol: firewallConfig.protocol
+          },
+          onboarding_step: 3
+        })
+        .eq('id', client.id);
+
+      if (clientError) throw clientError;
+
+      // 2. Insert syslog source
+      const { error: syslogError } = await supabase
+        .from('syslog_sources')
+        .insert({
+          client_id: client.id,
+          name: firewallConfig.name,
+          source_type: 'firewall',
+          brand: firewallConfig.brand,
+          source_ip: firewallConfig.ip,
+          syslog_port: firewallConfig.port,
+          syslog_protocol: firewallConfig.protocol,
+          status: 'pending'
+        });
+
+      if (syslogError) throw syslogError;
+      setStep(3);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleComplete = async () => {
     if (!supabase || !user) return;
     setVerifying(true);
     try {
-      // Update user metadata to mark onboarding as complete
+      await supabase.from('clients').update({ onboarding_step: 5 }).eq('user_id', user.id);
+      
       const { error: updateError } = await supabase.auth.updateUser({
         data: { onboarding_completed: true }
       });
 
       if (updateError) throw updateError;
-
       onComplete();
     } catch (err: any) {
       setError(err.message || 'Failed to complete onboarding');
     } finally {
       setVerifying(false);
     }
+  };
+
+  useEffect(() => {
+    if (step === 4 && supabase && client) {
+      const interval = setInterval(async () => {
+        const { data } = await supabase
+          .from('agents')
+          .select('*')
+          .eq('client_id', client.id);
+        if (data) setAgents(data);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [step, client]);
+
+  const toggleSelection = (id: string) => {
+    if (id === 'cloud') return; // Disabled
+    setSelections(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const showToast = (msg: string) => {
+    // Simple copy feedback
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-8 left-1/2 -translate-x-1/2 bg-white text-black px-4 py-2 rounded-full font-bold text-xs tracking-widest uppercase z-[100] animate-in fade-in slide-in-from-bottom-2';
+    toast.innerText = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    showToast('Copied to clipboard');
   };
 
   return (
@@ -201,29 +354,23 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
         {/* Progress Bar */}
         <div className="flex items-center justify-between mb-16 px-8 relative">
           <div className="absolute top-1/2 left-8 right-8 h-px bg-white/5 -translate-y-1/2 z-0" />
-          {[1, 2, 3].map((i) => (
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="relative z-10 flex flex-col items-center gap-3">
               <div className={cn(
-                "w-10 h-10 rounded-lg flex items-center justify-center font-bold transition-all duration-500 border",
+                "w-8 h-8 rounded-lg flex items-center justify-center font-bold transition-all duration-500 border text-xs",
                 step >= i 
                   ? "bg-white border-white text-black shadow-[0_0_20px_rgba(255,255,255,0.1)]" 
                   : "bg-black border-white/10 text-neutral-600"
               )}>
-                {step > i ? <CheckCircle2 className="w-5 h-5" /> : i}
+                {step > i ? <CheckCircle2 className="w-4 h-4" /> : i}
               </div>
-              <span className={cn(
-                "text-[10px] font-bold uppercase tracking-widest",
-                step >= i ? "text-white" : "text-neutral-600"
-              )}>
-                Step {i}
-              </span>
             </div>
           ))}
         </div>
 
         {/* Steps Content */}
         <div className="bg-black border border-white/10 rounded-2xl p-8 lg:p-12 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500/50 via-white/50 to-blue-500/50 opacity-20" />
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500/50 via-white/50 to-red-500/50 opacity-20" />
           
           <AnimatePresence mode="wait">
             {step === 1 && (
@@ -235,35 +382,55 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
                 className="space-y-10"
               >
                 <div>
-                  <h2 className="text-2xl font-bold mb-3 tracking-tight">Download Agent Installer</h2>
-                  <p className="text-neutral-500 text-sm font-medium leading-relaxed">Select the operating system for your primary endpoint or server.</p>
+                  <h2 className="text-2xl font-bold mb-3 tracking-tight">What do you want to monitor?</h2>
+                  <p className="text-neutral-500 text-sm font-medium leading-relaxed">Select all that apply to your environment</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-white/5 border border-white/5 rounded-xl overflow-hidden">
-                  {installers.map((os) => (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {[
+                    { id: 'windows', name: 'Windows Endpoints', icon: Monitor, desc: 'Windows workstations and servers' },
+                    { id: 'linux', name: 'Linux Servers', icon: Terminal, desc: 'Linux/Ubuntu/CentOS servers' },
+                    { id: 'firewall', name: 'Network Firewall', icon: Shield, desc: 'pfSense, FortiGate, Cisco ASA, etc' },
+                    { id: 'webserver', name: 'Web Servers', icon: Globe, desc: 'Apache, Nginx web servers' },
+                    { id: 'cloud', name: 'Cloud Infrastructure', icon: Cloud, desc: 'AWS, Azure, GCP logs', badge: 'Coming Soon' },
+                    { id: 'custom', name: 'Other / Custom', icon: Settings, desc: 'Any syslog-compatible device' }
+                  ].map((item) => (
                     <button 
-                      key={os.name}
-                      onClick={() => setStep(2)}
-                      className="group p-8 bg-black hover:bg-white/[0.02] transition-colors text-left flex flex-col"
+                      key={item.id}
+                      onClick={() => toggleSelection(item.id)}
+                      disabled={!!item.badge}
+                      className={cn(
+                        "group p-6 rounded-xl border transition-all text-left relative",
+                        selections.includes(item.id)
+                          ? "border-red-500/60 bg-red-500/10"
+                          : "border-white/5 bg-white/[0.02] hover:bg-white/[0.04]",
+                        item.badge && "opacity-50 cursor-not-allowed"
+                      )}
                     >
-                      <os.icon className={cn("w-8 h-8 mb-6 transition-transform group-hover:scale-110", os.color)} />
-                      <h3 className="font-bold text-base mb-2 tracking-tight">{os.name}</h3>
-                      <div className="flex items-center justify-between text-[11px] font-bold text-neutral-600 uppercase tracking-widest">
-                        <span>{os.version}</span>
-                        <span>{os.size}</span>
-                      </div>
-                      <div className="mt-6 flex items-center gap-2 text-white text-[11px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
-                        Download <Download className="w-3 h-3" />
-                      </div>
+                      {item.badge && (
+                        <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-white/10 text-[8px] font-bold uppercase tracking-widest text-neutral-400">
+                          {item.badge}
+                        </span>
+                      )}
+                      <item.icon className={cn(
+                        "w-6 h-6 mb-4 transition-transform group-hover:scale-110",
+                        selections.includes(item.id) ? "text-red-500" : "text-neutral-400"
+                      )} />
+                      <h3 className="font-bold text-sm mb-1 tracking-tight">{item.name}</h3>
+                      <p className="text-[10px] text-neutral-500 font-medium leading-tight">{item.desc}</p>
                     </button>
                   ))}
                 </div>
 
-                <div className="p-5 bg-white/[0.02] border border-white/5 rounded-xl flex items-start gap-4">
-                  <Shield className="w-5 h-5 text-blue-500 mt-0.5" />
-                  <p className="text-[13px] text-neutral-400 leading-relaxed font-medium">
-                    Our agents are lightweight (less than 1% CPU usage) and designed for zero-interruption security monitoring.
-                  </p>
+                <div className="flex justify-end pt-6 border-t border-white/5">
+                  <button 
+                    onClick={handleStep1Next}
+                    disabled={selections.length === 0 || isSaving}
+                    className="bg-white text-black px-8 py-3 rounded-md font-bold text-[13px] transition-all flex items-center gap-2 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? 'Saving...' : 'Next Step'}
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
                 </div>
               </motion.div>
             )}
@@ -274,158 +441,429 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="space-y-10"
+                className="space-y-8"
               >
                 <div>
-                  <h2 className="text-2xl font-bold mb-3 tracking-tight">Install & Configure</h2>
-                  <p className="text-neutral-500 text-sm font-medium leading-relaxed">Run the installer on your target machine using the command below.</p>
-                  {wazuhGroup && (
-                    <div className="mt-6 p-2.5 bg-white/[0.02] border border-white/5 rounded-md inline-flex items-center gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                      <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
-                        Agent Group: <span className="text-white">{wazuhGroup}</span>
-                      </p>
-                    </div>
-                  )}
+                  <h2 className="text-2xl font-bold mb-3 tracking-tight">Configure Firewall Log Forwarding</h2>
+                  <p className="text-neutral-500 text-sm font-medium leading-relaxed">We need a few details to receive logs from your firewall</p>
                 </div>
 
-                <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-orange-500">
-                      <Terminal className="w-4 h-4" />
-                      <h3 className="text-[11px] font-bold uppercase tracking-widest">Linux Installation</h3>
-                    </div>
-                    <div className="bg-neutral-900/50 border border-white/10 rounded-xl p-5 font-mono text-[13px] group relative">
-                      <div className="flex items-center justify-between mb-4 text-neutral-600 text-[10px] font-bold uppercase tracking-widest">
-                        <span>Run as Root</span>
-                        <span className="px-2 py-0.5 bg-white/5 rounded text-white">BASH</span>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Firewall Brand *</label>
+                      <div className="relative">
+                        <select 
+                          value={firewallConfig.brand}
+                          onChange={(e) => setFirewallConfig(prev => ({ ...prev, brand: e.target.value }))}
+                          className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-red-500/50 appearance-none"
+                        >
+                          <option value="">Select Brand</option>
+                          <option value="pfSense">pfSense</option>
+                          <option value="FortiGate">FortiGate</option>
+                          <option value="Cisco ASA">Cisco ASA</option>
+                          <option value="Sophos XG">Sophos XG</option>
+                          <option value="OPNsense">OPNsense</option>
+                          <option value="SonicWall">SonicWall</option>
+                          <option value="Palo Alto">Palo Alto</option>
+                          <option value="Generic Syslog">Generic Syslog</option>
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
                       </div>
-                      <code className="text-blue-400 break-all leading-relaxed">
-                        {loadingKey ? (
-                          <span className="flex items-center gap-2 text-neutral-600 italic">
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                            Fetching installation key...
-                          </span>
-                        ) : !installKey ? (
-                          <div className="flex flex-col items-center gap-2 py-2">
-                            <span className="text-red-500 italic text-xs">
-                              {error || 'Installation key not found.'}
-                            </span>
-                            <button 
-                              onClick={fetchClientData}
-                              className="text-blue-500 hover:text-blue-400 text-[10px] font-bold flex items-center gap-1 uppercase tracking-widest"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              Retry
-                            </button>
-                          </div>
-                        ) : (
-                          `curl -s "${import.meta.env.VITE_SUPABASE_URL}/functions/v1/install-agent?key=${installKey}&os=linux" | sudo bash`
-                        )}
-                      </code>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Firewall Name *</label>
+                      <input 
+                        type="text"
+                        placeholder="Give it a friendly name"
+                        value={firewallConfig.name}
+                        onChange={(e) => setFirewallConfig(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-red-500/50"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Firewall IP Address *</label>
+                      <input 
+                        type="text"
+                        placeholder="192.168.1.1"
+                        value={firewallConfig.ip}
+                        onChange={(e) => setFirewallConfig(prev => ({ ...prev, ip: e.target.value }))}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-red-500/50"
+                      />
+                      <p className="text-[10px] text-neutral-600 italic">The LAN IP of your firewall</p>
                     </div>
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-blue-500">
-                      <Monitor className="w-4 h-4" />
-                      <h3 className="text-[11px] font-bold uppercase tracking-widest">Windows Installation</h3>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Syslog Port</label>
+                      <input 
+                        type="number"
+                        value={firewallConfig.port}
+                        onChange={(e) => setFirewallConfig(prev => ({ ...prev, port: parseInt(e.target.value) }))}
+                        className="w-full bg-white/[0.03] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-red-500/50"
+                      />
                     </div>
-                    <div className="bg-neutral-900/50 border border-white/10 rounded-xl p-5 font-mono text-[13px] group relative">
-                      <div className="flex items-center justify-between mb-4 text-neutral-600 text-[10px] font-bold uppercase tracking-widest">
-                        <span>Run as Administrator</span>
-                        <span className="px-2 py-0.5 bg-white/5 rounded text-white">POWERSHELL</span>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Protocol</label>
+                      <div className="flex bg-white/[0.03] border border-white/10 rounded-lg p-1">
+                        {['UDP', 'TCP'].map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setFirewallConfig(prev => ({ ...prev, protocol: p as 'UDP' | 'TCP' }))}
+                            className={cn(
+                              "flex-1 py-2 text-xs font-bold rounded-md transition-all",
+                              firewallConfig.protocol === p ? "bg-white text-black" : "text-neutral-500"
+                            )}
+                          >
+                            {p}
+                          </button>
+                        ))}
                       </div>
-                      <code className="text-blue-400 break-all leading-relaxed">
-                        {loadingKey ? (
-                          <span className="flex items-center gap-2 text-neutral-600 italic">
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                            Fetching installation key...
-                          </span>
-                        ) : !installKey ? (
-                          <div className="flex flex-col items-center gap-2 py-2">
-                            <span className="text-red-500 italic text-xs">
-                              {error || 'Installation key not found.'}
-                            </span>
-                            <button 
-                              onClick={fetchClientData}
-                              className="text-blue-500 hover:text-blue-400 text-[10px] font-bold flex items-center gap-1 uppercase tracking-widest"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              Retry
-                            </button>
-                          </div>
-                        ) : (
-                          `powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '${import.meta.env.VITE_SUPABASE_URL}/functions/v1/install-agent?key=${installKey}&os=windows' -OutFile '$env:TEMP\\kastronsec-install.ps1'; & '$env:TEMP\\kastronsec-install.ps1'"`
-                        )}
-                      </code>
                     </div>
+
+                    {error && (
+                      <div className="p-3 bg-red-500/5 border border-red-500/10 rounded-lg text-red-500 text-[11px] flex items-center gap-2">
+                        <AlertCircle className="w-3 h-3" />
+                        {error}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex justify-between pt-6 border-t border-white/5">
                   <button onClick={() => setStep(1)} className="text-neutral-500 hover:text-white transition-colors text-[11px] font-bold uppercase tracking-widest">Back</button>
                   <button 
-                    onClick={handleComplete}
-                    disabled={verifying}
-                    className="bg-white text-black px-8 py-3 rounded-md font-bold text-[13px] transition-all flex items-center gap-2 hover:bg-neutral-200 active:scale-95"
+                    onClick={handleStep2Save}
+                    disabled={isSaving}
+                    className="bg-white text-black px-8 py-3 rounded-md font-bold text-[13px] transition-all flex items-center gap-2 hover:bg-neutral-200"
                   >
-                    {verifying ? 'Finalizing...' : 'Take me to Dashboard'}
-                    {!verifying && <ArrowRight className="w-4 h-4" />}
+                    {isSaving ? 'Configuring...' : 'Continue'}
+                    <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               </motion.div>
             )}
 
             {step === 3 && (
-              <motion.div 
+              <motion.div
                 key="step3"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-8"
+              >
+                <div>
+                  <h2 className="text-2xl font-bold mb-3 tracking-tight">Install Security Agents</h2>
+                  <p className="text-neutral-500 text-sm font-medium leading-relaxed">Execute the following commands to secure your infrastructure</p>
+                </div>
+
+                <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-2 scrollbar-hide">
+                  {selections.includes('windows') && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-blue-500">
+                        <Monitor className="w-4 h-4" />
+                        <h3 className="text-[11px] font-bold uppercase tracking-widest">Windows Agent Installation</h3>
+                      </div>
+                      <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-4 font-mono text-[12px] text-green-400 group relative">
+                        <button 
+                          onClick={() => copyToClipboard(`powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '${import.meta.env.VITE_SUPABASE_URL}/functions/v1/install-agent?key=${installKey}&os=windows' -OutFile '$env:TEMP\\kastronsec-install.ps1'; & '$env:TEMP\\kastronsec-install.ps1'"`)}
+                          className="absolute right-4 top-4 p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
+                        >
+                          <Copy className="w-4 h-4 text-white" />
+                        </button>
+                        <code>
+                          powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '{import.meta.env.VITE_SUPABASE_URL}/functions/v1/install-agent?key={installKey}&os=windows' -OutFile '$env:TEMP\kastronsec-install.ps1'; & '$env:TEMP\kastronsec-install.ps1'"
+                        </code>
+                      </div>
+                    </div>
+                  )}
+
+                  {selections.includes('linux') && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-orange-500">
+                        <Terminal className="w-4 h-4" />
+                        <h3 className="text-[11px] font-bold uppercase tracking-widest">Linux Agent Installation</h3>
+                      </div>
+                      <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-4 font-mono text-[12px] text-green-400 group relative">
+                        <button 
+                          onClick={() => copyToClipboard(`curl -s "${import.meta.env.VITE_SUPABASE_URL}/functions/v1/install-agent?key=${installKey}&os=linux" | sudo bash`)}
+                          className="absolute right-4 top-4 p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
+                        >
+                          <Copy className="w-4 h-4 text-white" />
+                        </button>
+                        <code>
+                          curl -s "{import.meta.env.VITE_SUPABASE_URL}/functions/v1/install-agent?key={installKey}&os=linux" | sudo bash
+                        </code>
+                      </div>
+                    </div>
+                  )}
+
+                  {selections.includes('firewall') && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-red-500">
+                        <Shield className="w-4 h-4" />
+                        <h3 className="text-[11px] font-bold uppercase tracking-widest">Firewall Log Forwarding Setup</h3>
+                      </div>
+                      <p className="text-[11px] text-neutral-500 font-medium">Configure your {firewallConfig.brand} to send logs to KastronSec</p>
+                      
+                      <div className="bg-white/[0.02] border border-white/10 rounded-xl overflow-hidden">
+                        <div className="flex border-b border-white/5">
+                          <button className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest bg-white/5 text-white">Configuration Steps</button>
+                          <button className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-neutral-500 hover:text-white">Connection Details</button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                          <div className="space-y-4 text-[13px] text-neutral-400 font-medium leading-relaxed">
+                            {firewallConfig.brand === 'pfSense' && (
+                              <ol className="list-decimal list-inside space-y-2">
+                                <li>Navigate to <b>Status &gt; System Logs &gt; Settings</b></li>
+                                <li>Scroll to <b>Remote Logging Options</b></li>
+                                <li>Check <b>Send log messages to remote syslog server</b></li>
+                                <li>Select <b>WAN</b> as Source Address</li>
+                                <li>Add <code>{WAZUH_IP}:514</code> to IP Addresses</li>
+                                <li>Check <b>Everything</b> or specific logs under Remote Syslog Contents</li>
+                                <li>Click <b>Save</b> at the bottom</li>
+                              </ol>
+                            )}
+                            {firewallConfig.brand === 'FortiGate' && (
+                              <ol className="list-decimal list-inside space-y-2">
+                                <li>Go to <b>Log & Report &gt; Log Settings</b></li>
+                                <li>Enable <b>Send Logs to Syslog</b></li>
+                                <li>Enter IP Address: <code>{WAZUH_IP}</code></li>
+                                <li>Set Port: <code>514</code></li>
+                                <li>Set Reliable Logging: <b>No (UDP)</b></li>
+                                <li>Apply changes</li>
+                              </ol>
+                            )}
+                            {(!['pfSense', 'FortiGate'].includes(firewallConfig.brand)) && (
+                              <p>Navigate to your firewall's Syslog/Remote Logging settings and point it to: <br/><code className="text-red-400">{WAZUH_IP}:514</code> via {firewallConfig.protocol}</p>
+                            )}
+                          </div>
+                          
+                          <div className="pt-4 border-t border-white/5 grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">KastronSec Syslog IP</span>
+                              <div className="flex items-center justify-between bg-black rounded p-2 border border-white/5">
+                                <span className="text-xs font-mono text-green-400">{WAZUH_IP}</span>
+                                <button onClick={() => copyToClipboard(WAZUH_IP)}><Copy className="w-3 h-3 text-neutral-600 hover:text-white" /></button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">Your Firewall IP</span>
+                              <div className="flex items-center justify-between bg-black rounded p-2 border border-white/5">
+                                <span className="text-xs font-mono text-blue-400">{firewallConfig.ip}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selections.includes('webserver') && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-emerald-500">
+                        <Globe className="w-4 h-4" />
+                        <h3 className="text-[11px] font-bold uppercase tracking-widest">Web Server Log Monitoring</h3>
+                      </div>
+                      <p className="text-[11px] text-neutral-500 italic font-medium">After installing the agent, add these lines to your agent.conf to monitor web server logs:</p>
+                      <div className="bg-[#0a0a0a] border border-neutral-800 rounded-xl p-4 font-mono text-[12px] text-green-400 group relative">
+                        <button 
+                          onClick={() => copyToClipboard(`<localfile>
+  <log_format>apache</log_format>
+  <location>/var/log/apache2/access.log</location>
+</localfile>
+<localfile>
+  <log_format>apache</log_format>
+  <location>/var/log/apache2/error.log</location>
+</localfile>`)}
+                          className="absolute right-4 top-4 p-2 bg-white/5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
+                        >
+                          <Copy className="w-4 h-4 text-white" />
+                        </button>
+                        <pre className="whitespace-pre-wrap">
+{`<localfile>
+  <log_format>apache</log_format>
+  <location>/var/log/apache2/access.log</location>
+</localfile>`}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between pt-6 border-t border-white/5">
+                  <button onClick={() => setStep(selections.includes('firewall') ? 2 : 1)} className="text-neutral-500 hover:text-white transition-colors text-[11px] font-bold uppercase tracking-widest">Back</button>
+                  <button 
+                    onClick={() => setStep(4)}
+                    className="bg-white text-black px-8 py-3 rounded-md font-bold text-[13px] transition-all flex items-center gap-2 hover:bg-neutral-200"
+                  >
+                    I've Installed it
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {step === 4 && (
+              <motion.div
+                key="step4"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-8"
+              >
+                <div className="text-center mb-8">
+                  <h2 className="text-2xl font-bold mb-3 tracking-tight">Verify Your Connection</h2>
+                  <p className="text-neutral-500 text-sm font-medium leading-relaxed">Waiting for agents to connect...</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(selections.includes('windows') || selections.includes('linux')) && (
+                    <div className="bg-white/[0.03] border border-neutral-800 rounded-xl p-6 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-[11px] font-bold uppercase tracking-widest text-neutral-400">Security Agents</h3>
+                        <RefreshCw className="w-3 h-3 text-neutral-600 animate-spin" />
+                      </div>
+                      
+                      {agents.length > 0 ? (
+                        <div className="space-y-3">
+                          {agents.map(agent => (
+                            <div key={agent.id} className="flex items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold truncate">{agent.name}</p>
+                                <p className="text-[10px] text-emerald-400 font-medium">Connected</p>
+                              </div>
+                              <span className="text-[9px] text-neutral-600 font-mono">
+                                {new Date(agent.last_keepalive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-6 text-center space-y-3">
+                          <RefreshCw className="w-8 h-8 text-neutral-700 animate-spin" />
+                          <div>
+                            <p className="text-xs font-bold text-neutral-400">Waiting for agent...</p>
+                            <p className="text-[10px] text-neutral-600 max-w-[150px] mx-auto">Install the agent on your endpoint to see it appear here</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {selections.includes('firewall') && (
+                    <div className="bg-white/[0.03] border border-neutral-800 rounded-xl p-6 space-y-4">
+                      <h3 className="text-[11px] font-bold uppercase tracking-widest text-neutral-400">Firewall Verification</h3>
+                      <div className="space-y-4">
+                        <p className="text-[11px] text-neutral-500 font-medium leading-relaxed">After configuring your{firewallConfig.brand}:</p>
+                        <div className="space-y-2">
+                          {[
+                            'Syslog forwarding enabled on firewall',
+                            `Firewall can reach ${WAZUH_IP}:514`
+                          ].map((text, i) => (
+                            <label key={i} className="flex items-center gap-3 p-3 bg-white/5 rounded-lg border border-white/5 cursor-pointer hover:bg-white/[0.08] transition-colors">
+                              <input type="checkbox" className="w-4 h-4 rounded border-white/10 bg-black accent-red-500" />
+                              <span className="text-[11px] font-medium text-neutral-400">{text}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <button className="w-full py-3 rounded-lg border border-white/5 bg-white/5 text-[11px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2">
+                          Test Connection
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between items-center pt-8 border-t border-white/5">
+                  <button 
+                    onClick={() => { setSkipped(true); handleComplete(); }}
+                    className="group flex items-center gap-2 text-neutral-600 hover:text-white transition-colors"
+                  >
+                    <span className="text-[11px] font-bold uppercase tracking-widest">Skip for now</span>
+                    <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+                  </button>
+                  <button 
+                    onClick={handleComplete}
+                    disabled={agents.length === 0 && !skipped}
+                    className="bg-white text-black px-10 py-4 rounded-md font-bold text-sm transition-all hover:bg-neutral-200 active:scale-95 disabled:opacity-30"
+                  >
+                    Complete Setup
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-neutral-600 text-center italic">
+                  * You can complete this later in Settings &gt; Integrations
+                </p>
+              </motion.div>
+            )}
+
+            {step === 5 && (
+              <motion.div 
+                key="step5"
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.02 }}
-                className="text-center py-12"
+                className="text-center py-6"
               >
                 <div className="relative inline-block mb-10">
                   <div className="w-24 h-24 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center transition-all duration-500">
                     <CheckCircle2 className="w-12 h-12 text-blue-500" />
                   </div>
-                  {verifying && (
-                    <div className="absolute -inset-4 border-2 border-white/5 border-t-white rounded-full animate-spin"></div>
-                  )}
                 </div>
 
-                <div className="mb-12">
-                  <h2 className="text-3xl font-bold mb-4 tracking-tight">
-                    Installation Complete?
-                  </h2>
-                  <p className="text-neutral-500 max-w-sm mx-auto font-medium leading-relaxed">
-                    Once you've installed the agent on your machine, click the button below to access your security dashboard.
+                <div className="mb-10">
+                  <h2 className="text-3xl font-bold mb-4 tracking-tight">Setup Complete!</h2>
+                  <p className="text-neutral-500 max-w-sm mx-auto font-medium leading-relaxed mb-8">
+                    Your KastronSec environment is now active. We are monitoring your infrastructure for threats.
                   </p>
+                  
+                  <div className="max-w-xs mx-auto text-left space-y-3 bg-white/[0.02] border border-white/5 rounded-xl p-6">
+                    <h4 className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-4">You are monitoring:</h4>
+                    {selections.includes('windows') && (
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                        <span className="text-xs font-bold">Windows Endpoints <span className="text-neutral-500">({agents.filter(a => a.os_family?.includes('win')).length} active)</span></span>
+                      </div>
+                    )}
+                    {selections.includes('linux') && (
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                        <span className="text-xs font-bold">Linux Servers <span className="text-neutral-500">({agents.filter(a => a.os_family?.includes('linux')).length} active)</span></span>
+                      </div>
+                    )}
+                    {selections.includes('firewall') && (
+                      <div className="flex items-center gap-3">
+                        <Clock className="w-4 h-4 text-orange-500" />
+                        <span className="text-xs font-bold">{firewallConfig.brand} Firewall <span className="text-neutral-500 font-medium">(pending)</span></span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {error && (
-                  <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-xl text-red-500 text-[13px] font-medium mb-10 flex items-center justify-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
+                  <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-xl text-red-500 text-[13px] font-medium mb-10">
                     {error}
                   </div>
                 )}
 
-                <div className="flex flex-col gap-6 items-center">
-                  <button 
-                    onClick={handleComplete}
-                    disabled={verifying}
-                    className="bg-white text-black px-12 py-4 rounded-md font-bold text-sm transition-all hover:bg-neutral-200 active:scale-95 shadow-xl"
-                  >
-                    {verifying ? 'Finalizing...' : 'Launch Dashboard'}
-                  </button>
-                  <button onClick={() => setStep(2)} className="text-neutral-500 hover:text-white transition-colors text-[11px] font-bold uppercase tracking-widest">
-                    Back to Command
-                  </button>
-                </div>
+                <button 
+                  onClick={onComplete}
+                  disabled={verifying}
+                  className="bg-white text-black px-12 py-4 rounded-md font-bold text-sm transition-all hover:bg-neutral-200 active:scale-95 shadow-xl"
+                >
+                  {verifying ? 'Redirecting...' : 'Launch Dashboard'}
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
+
 
         {/* Footer */}
         <div className="mt-16 flex items-center justify-center gap-12 opacity-30 grayscale">

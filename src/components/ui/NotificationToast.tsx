@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, AlertCircle, AlertTriangle, Info, CheckCircle2, Server, Trash2, ServerOff } from 'lucide-react';
+import { X, AlertCircle, AlertTriangle, Info, CheckCircle2, Server, Trash2, ServerOff, Sparkles, Download, ShieldAlert } from 'lucide-react';
 import { useNotifications, AppNotification, NotificationType } from '../../contexts/NotificationContext';
 import { cn } from '../../lib/utils';
 
@@ -22,6 +22,12 @@ const getNotificationConfig = (type: NotificationType) => {
       return { icon: Trash2, color: 'text-neutral-500', borderColor: 'border-neutral-500/50', bg: 'bg-neutral-500' };
     case 'rule_deployed':
       return { icon: CheckCircle2, color: 'text-green-500', borderColor: 'border-green-500/50', bg: 'bg-green-500' };
+    case 'report_generated':
+      return { icon: Sparkles, color: 'text-purple-500', borderColor: 'border-purple-500/50', bg: 'bg-purple-500' };
+    case 'report_downloaded':
+      return { icon: Download, color: 'text-blue-500', borderColor: 'border-blue-500/50', bg: 'bg-blue-500' };
+    case 'alert_escalated':
+      return { icon: ShieldAlert, color: 'text-red-500', borderColor: 'border-red-500/50', bg: 'bg-red-500' };
     default:
       return { icon: Info, color: 'text-blue-500', borderColor: 'border-blue-500/50', bg: 'bg-blue-500' };
   }

@@ -1,12 +1,35 @@
-import { GoogleGenAI, Type } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+import { supabase } from "./supabase";
 
 export interface SOCReportParams {
   type: 'Escalation' | 'Weekly' | 'Monthly';
   alertData?: any;
   statsData?: any;
   analystName?: string;
+}
+
+async function callGeminiProxy(prompt: string, options: { systemInstruction?: string, ip?: string } = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("Authentication required for AI analysis");
+
+  const response = await fetch("/api/gemini-analysis", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify({
+      prompt,
+      systemInstruction: options.systemInstruction,
+      ip: options.ip
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || "AI Analysis failed");
+  }
+
+  return await response.json();
 }
 
 export async function generateStructuredSOCReport(params: SOCReportParams): Promise<any> {
@@ -26,29 +49,38 @@ export async function generateStructuredSOCReport(params: SOCReportParams): Prom
     "timestamp": "string",
     "agent": "string",
     "rule_id": "string",
-    "source_ip": "string"
+    "source_ip": "string",
+    "dest_ip": "string"
   },
   "attack_analysis": {
+    "attack_type": "string",
     "description": "string",
     "attack_chain": ["string"],
     "mitre_techniques": ["string"]
   },
-  "ioc_analysis": {
-    "iocs": [{"type": "string", "value": "string", "verdict": "string", "source": "string"}],
-    "verdict": "string",
-    "confidence": 0
-  },
+  "ioc_analysis": [
+    {
+      "type": "string",
+      "value": "string",
+      "verdict": "string",
+      "threat_score": "string",
+      "source": "string"
+    }
+  ],
   "impact_assessment": {
-    "affected_systems": ["string"],
+    "affected_systems": "string",
     "data_at_risk": "string",
     "business_impact": "string",
-    "severity_justification": "string"
+    "containment_status": "string",
+    "true_positive": "string",
+    "confidence_level": "string"
   },
   "recommendations": {
     "immediate": ["string"],
     "short_term": ["string"],
     "long_term": ["string"]
   },
+  "analyst_notes": "string",
   "conclusion": "string"
 }
 Base your analysis on the provided alert data. Be specific and actionable. Return ONLY the JSON object.`;
@@ -104,21 +136,27 @@ Return ONLY the JSON object.`;
   }
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: prompt,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-        responseMimeType: "application/json"
-      },
-    });
-
-    const text = response.text;
-    if (!text) throw new Error("Empty response from Gemini");
-    return JSON.parse(text);
+    // SECURITY: Use the proxy instead of client-side SDK
+    const fullPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
+    return await callGeminiProxy(fullPrompt);
   } catch (error) {
-    console.error("Gemini Structured API Error:", error);
+    console.error("Gemini API Error:", error);
+    throw error;
+  }
+}
+
+export async function generateAINarrative(prompt: string, systemInstruction?: string): Promise<any> {
+  try {
+    const fullPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
+    const result = await callGeminiProxy(fullPrompt);
+    
+    // Fallback parsing if proxy returns a string or object
+    if (typeof result === 'string') {
+      return JSON.parse(result.replace(/```json|```/g, '').trim());
+    }
+    return result;
+  } catch (error) {
+    console.error("AI Narrative Error:", error);
     throw error;
   }
 }

@@ -36,6 +36,12 @@ serve(async (req) => {
       throw new Error('Missing required fields')
     }
 
+    // SECURITY: Sanitize wazuh_group to prevent shell injection in installation scripts
+    const sanitizedGroup = wazuh_group.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (sanitizedGroup !== wazuh_group) {
+      console.warn(`Sanitized malicious wazuh_group input from "${wazuh_group}" to "${sanitizedGroup}"`);
+    }
+
     console.log(`Creating/Updating client for user ${user.id}: ${name}`)
 
     // Upsert the client record
@@ -45,7 +51,7 @@ serve(async (req) => {
         user_id: user.id,
         name: name,
         install_key: install_key,
-        wazuh_group: wazuh_group
+        wazuh_group: sanitizedGroup
       }, {
         onConflict: 'user_id'
       })

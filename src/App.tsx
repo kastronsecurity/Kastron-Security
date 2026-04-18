@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Bell, 
+  ShieldAlert,
   CircleDot, 
   Users, 
   Activity, 
@@ -59,6 +60,7 @@ import LandingPage from './components/auth/LandingPage';
 import OnboardingPage from './components/onboarding/OnboardingPage';
 import MarketingPage from './components/marketing/MarketingPage';
 import ReportsPage from './components/reports/ReportsPage';
+import EscalationsPage from './components/escalations/EscalationsPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { supabase } from './lib/supabase';
 import { useClient } from './contexts/ClientContext';
@@ -146,19 +148,27 @@ const UnderConstruction = ({ title }: { title: string }) => (
 export default function App() {
   const { currentClient, user, loading: clientLoading, authLoading, refreshClient, agentCount, alertCount, onboardingCompleted } = useClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'alerts' | 'cases' | 'onboarding' | 'agents' | 'rules' | 'entities' | 'timeline' | 'reports' | 'user-cog' | 'integrations' | 'audit' | 'settings' | 'api-logs' | 'support'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'alerts' | 'escalations' | 'cases' | 'onboarding' | 'agents' | 'rules' | 'entities' | 'timeline' | 'reports' | 'user-cog' | 'integrations' | 'audit' | 'settings' | 'api-logs' | 'support'>('dashboard');
   
   const hasData = agentCount > 0 || alertCount > 0;
 
   // Handle initial page and redirection based on data presence
   useEffect(() => {
+    if (authLoading || clientLoading) return;
+
+    const isManualNav = window.sessionStorage.getItem('manual_nav') === 'true';
+
     if (onboardingCompleted && !hasData) {
-      setCurrentPage('agents');
-    } else if (onboardingCompleted && hasData && currentPage === 'agents' && !window.sessionStorage.getItem('manual_nav')) {
+      // Only force to agents if they are on dashboard and have no data
+      // This prevents flickering redirects when data is being updated in the background
+      if (currentPage === 'dashboard' && !isManualNav) {
+        setCurrentPage('agents');
+      }
+    } else if (onboardingCompleted && hasData && currentPage === 'agents' && !isManualNav) {
       // Only auto-redirect to dashboard if they were on agents page because of no data
       setCurrentPage('dashboard');
     }
-  }, [hasData, onboardingCompleted]);
+  }, [hasData, onboardingCompleted, authLoading, clientLoading]);
   const [latestAlerts, setLatestAlerts] = useState<any[]>([]);
   const [alertOverviewData, setAlertOverviewData] = useState([
     { name: 'Critical', value: 0, color: '#ef4444' },
@@ -399,7 +409,7 @@ export default function App() {
     }
   };
 
-  if (authLoading || clientLoading) {
+  if (authLoading || (clientLoading && !currentClient)) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -513,6 +523,18 @@ export default function App() {
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('alerts');
+                    window.sessionStorage.setItem('manual_nav', 'true');
+                  }
+                }} 
+              />
+              <SidebarItem 
+                icon={ShieldAlert} 
+                label="Escalations" 
+                active={currentPage === 'escalations'} 
+                disabled={!hasData}
+                onClick={() => {
+                  if (hasData) {
+                    setCurrentPage('escalations');
                     window.sessionStorage.setItem('manual_nav', 'true');
                   }
                 }} 
@@ -1009,7 +1031,18 @@ export default function App() {
                         </tr>
                       ) : (
                         activeCases.map((item) => (
-                          <tr key={item.id} className="hover:bg-white/[0.03] transition-colors group cursor-pointer">
+                          <tr 
+                            key={item.id} 
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent('navigate', { 
+                                detail: { 
+                                  page: 'cases', 
+                                  data: { caseId: item.id } 
+                                } 
+                              }));
+                            }}
+                            className="hover:bg-white/[0.03] transition-colors group cursor-pointer"
+                          >
                             <td className="px-6 py-5 font-medium text-white">
                               <div className="flex items-center gap-3">
                                 <div className="w-3.5 h-3.5 rounded border border-neutral-800 group-hover:border-neutral-600 transition-colors" />
@@ -1029,6 +1062,8 @@ export default function App() {
             </motion.div>
           ) : currentPage === 'alerts' ? (
             <AlertsPage key="alerts" user={user} />
+          ) : currentPage === 'escalations' ? (
+            <EscalationsPage />
           ) : currentPage === 'cases' ? (
             <CasesPage key="cases" user={user} />
           ) : currentPage === 'agents' ? (
