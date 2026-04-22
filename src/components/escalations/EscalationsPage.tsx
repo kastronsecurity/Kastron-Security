@@ -2350,16 +2350,18 @@ Respond with ONLY a JSON object:
       if (error) throw error;
       setEscalations(data || []);
 
-      // Fetch active workspaces to show "View Investigation" button
+      // Fetch workspaces to show "View Investigation" button (both active and closed)
       const { data: wsData } = await supabase
         .from('investigation_workspaces')
-        .select('id, escalation_id')
-        .eq('client_id', currentClient.id)
-        .eq('status', 'active');
+        .select('id, escalation_id, status')
+        .eq('client_id', currentClient.id);
       
       const wsMap: Record<string, string> = {};
       wsData?.forEach(ws => {
-        wsMap[ws.escalation_id] = ws.id;
+        // Prefer active workspaces if multiple exist (unlikely), otherwise take closed ones
+        if (!wsMap[ws.escalation_id] || ws.status === 'active') {
+          wsMap[ws.escalation_id] = ws.id;
+        }
       });
       setActiveWorkspaces(wsMap);
     } catch (e) {
@@ -2392,12 +2394,13 @@ Respond with ONLY a JSON object:
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
-      // Check if workspace already exists for this escalation
+      // Check if workspace already exists for this escalation (any status)
       const { data: existing } = await supabase
         .from('investigation_workspaces')
         .select('*')
         .eq('escalation_id', esc.id)
-        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
       
       let workspace = existing;
@@ -3829,7 +3832,9 @@ Return ONLY valid JSON matching this structure:
                                         <div className="flex items-center gap-3">
                                           <Search className="w-4 h-4" />
                                           <span className="text-[11px] font-bold uppercase tracking-widest">
-                                            {activeWorkspaces[esc.id] ? "View Investigation" : "Create Case & Investigate"}
+                                            {esc.status === 'Resolved' || esc.status === 'False Positive' 
+                                              ? "Review Investigation" 
+                                              : activeWorkspaces[esc.id] ? "View Investigation" : "Create Case & Investigate"}
                                           </span>
                                         </div>
                                         <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-all" />

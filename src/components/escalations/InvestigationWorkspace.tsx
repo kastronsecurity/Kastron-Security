@@ -811,8 +811,12 @@ Respond with ONLY a JSON object:
               </h3>
               <div className="flex items-center gap-3 mt-1">
                 <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-[9px] font-bold text-red-500 uppercase tracking-widest">LIVE — {workspace.opened_by} INVESTIGATING</span>
+                  <div className={cn("w-1.5 h-1.5 rounded-full", workspace.status === 'closed' ? "bg-emerald-500" : "bg-red-500 animate-pulse")} />
+                  <span className={cn("text-[9px] font-bold uppercase tracking-widest", workspace.status === 'closed' ? "text-emerald-500" : "text-red-500")}>
+                    {workspace.status === 'closed' 
+                      ? `RESOLVED — VERDICT: ${workspace.verdict}` 
+                      : `LIVE — ${workspace.opened_by} INVESTIGATING`}
+                  </span>
                 </div>
                 {caseCreated && (
                   <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-lg">
@@ -846,13 +850,21 @@ Respond with ONLY a JSON object:
             <Sparkles className="w-4 h-4 text-purple-500" />
             <span className="text-[11px] font-bold uppercase tracking-widest">Generate Report</span>
           </button>
-          <button 
-            onClick={onShowVerdict}
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-400 border border-emerald-500/10 hover:border-emerald-500/20 rounded-xl transition-all group"
-          >
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            <span className="text-[11px] font-bold uppercase tracking-widest">Set Verdict</span>
-          </button>
+          {workspace.status !== 'closed' && (
+            <button 
+              onClick={onShowVerdict}
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-400 border border-emerald-500/10 hover:border-emerald-500/20 rounded-xl transition-all group"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span className="text-[11px] font-bold uppercase tracking-widest">Set Verdict</span>
+            </button>
+          )}
+          {workspace.status === 'closed' && (
+            <div className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              <span className="text-[11px] font-bold text-emerald-500 uppercase tracking-widest">Case Resolved</span>
+            </div>
+          )}
           <button 
             onClick={onClose}
             className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl transition-all border border-neutral-700 hover:border-neutral-600"
@@ -1630,12 +1642,14 @@ Respond with ONLY a JSON object:
                   </div>
                   <h4 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Evidence Locker ({(data.evidence || []).length})</h4>
                 </div>
-                <button 
-                  onClick={() => setShowEvidenceModal(true)}
-                  className="p-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400 hover:bg-blue-500/20 transition-all"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
+                {workspace.status !== 'closed' && (
+                  <button 
+                    onClick={() => setShowEvidenceModal(true)}
+                    className="p-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400 hover:bg-blue-500/20 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               <div className="space-y-3">
