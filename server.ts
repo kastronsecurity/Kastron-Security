@@ -628,6 +628,11 @@ async function startServer() {
     }
   });
 
+  // Agent Installation Script Route
+  app.get("/install", (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'public', 'install.sh'));
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

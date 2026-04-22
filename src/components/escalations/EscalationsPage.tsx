@@ -2468,15 +2468,15 @@ Respond with ONLY a JSON object:
       setActiveWorkspace(workspace);
       setActiveWorkspaceEsc(esc);
       setShowWorkspace(true);
-      await loadWorkspaceData(workspace, esc);
+      await loadWorkspaceData(workspace, esc, false);
     } catch (err) {
       console.error('Error opening investigation workspace:', err);
       showToast('Failed to initialize workspace', 'error');
     }
   };
 
-  const loadWorkspaceData = async (workspace: any, esc: Escalation) => {
-    setWorkspaceLoading(true);
+  const loadWorkspaceData = async (workspace: any, esc: Escalation, showLoading = true) => {
+    if (showLoading) setWorkspaceLoading(true);
     
     try {
       const { data: linkedAlert } = esc.alert_id ? await supabase.from('alerts').select('*').eq('id', esc.alert_id).single() : { data: null };
@@ -2733,7 +2733,7 @@ Respond with ONLY a JSON object:
       confidence: 'High',
       added_by: user.email
     });
-    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc);
+    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc, false);
     showToast('Alert added as evidence', 'success');
   };
 
@@ -2780,7 +2780,7 @@ Respond with ONLY a JSON object:
     }, { onConflict: 'workspace_id,ip' });
 
     setThreatIntelLoading(false);
-    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc);
+    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc, false);
   };
 
   const handleAddNote = async (noteText: string, isKeyFinding: boolean) => {
@@ -2794,13 +2794,13 @@ Respond with ONLY a JSON object:
       is_key_finding: isKeyFinding,
       added_by: user.email
     });
-    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc);
+    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc, false);
     showToast('Observation added', 'success');
   };
 
   const handleToggleKeyFinding = async (id: string, isKey: boolean) => {
     await supabase.from('investigation_notes').update({ is_key_finding: isKey }).eq('id', id);
-    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc);
+    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc, false);
   };
 
   const handleAddEvidence = async (type: string, title: string, description: string, confidence: string) => {
@@ -2817,7 +2817,7 @@ Respond with ONLY a JSON object:
       source: 'Manual entry by analyst',
       added_by: user.email
     });
-    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc);
+    await loadWorkspaceData(activeWorkspace, activeWorkspaceEsc, false);
     showToast('Evidence logged', 'success');
   };
 
@@ -3925,29 +3925,27 @@ Return ONLY valid JSON matching this structure:
         </div>
       </div>
 
-      <AnimatePresence>
-        {showWorkspace && activeWorkspace && activeWorkspaceEsc && (
-          <InvestigationWorkspace 
-            esc={activeWorkspaceEsc}
-            workspace={activeWorkspace}
-            data={workspaceData}
-            loading={workspaceLoading}
-            onClose={() => setShowWorkspace(false)}
-            onRunThreatIntel={handleRunThreatIntel}
-            onAddAlertAsEvidence={handleAddAlertAsEvidence}
-            onAddNote={handleAddNote}
-            onToggleKeyFinding={handleToggleKeyFinding}
-            onAddEvidence={handleAddEvidence}
-            onChecklistUpdate={handleChecklist}
-            onAddChecklistItem={handleAddChecklistItem}
-            onRemoveChecklistItem={handleRemoveChecklistItem}
-            onGenerateReport={handleGenerateWorkspaceReport}
-            onBlockIP={handleBlockIP}
-            onAddCurrentFindingsAsEvidence={handleAddCurrentFindingsAsEvidence}
-            onShowVerdict={() => setShowVerdictModal(true)}
-          />
-        )}
-      </AnimatePresence>
+      {showWorkspace && activeWorkspace && activeWorkspaceEsc && (
+        <InvestigationWorkspace 
+          esc={activeWorkspaceEsc}
+          workspace={activeWorkspace}
+          data={workspaceData}
+          loading={workspaceLoading}
+          onClose={() => setShowWorkspace(false)}
+          onRunThreatIntel={handleRunThreatIntel}
+          onAddAlertAsEvidence={handleAddAlertAsEvidence}
+          onAddNote={handleAddNote}
+          onToggleKeyFinding={handleToggleKeyFinding}
+          onAddEvidence={handleAddEvidence}
+          onChecklistUpdate={handleChecklist}
+          onAddChecklistItem={handleAddChecklistItem}
+          onRemoveChecklistItem={handleRemoveChecklistItem}
+          onGenerateReport={handleGenerateWorkspaceReport}
+          onBlockIP={handleBlockIP}
+          onAddCurrentFindingsAsEvidence={handleAddCurrentFindingsAsEvidence}
+          onShowVerdict={() => setShowVerdictModal(true)}
+        />
+      )}
 
       <AnimatePresence>
         {showVerdictModal && activeWorkspace && (

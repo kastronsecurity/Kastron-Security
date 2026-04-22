@@ -293,7 +293,7 @@ export const InvestigationWorkspace: React.FC<WorkspaceProps> = ({
       if (!response.ok) {
         const text = await response.text();
         if (response.status === 404 && text.includes('<!DOCTYPE')) {
-          throw new Error("Backend API not found. This application requires a full-stack environment (like Cloud Run) to run the threat intelligence server. Netlify only supports static files.");
+          throw new Error("Backend API not found. This application requires a full-stack environment (like Cloud Run) to run the threat intelligence server.");
         }
         throw new Error(`Intelligence server error (${response.status})`);
       }
@@ -768,25 +768,8 @@ Respond with ONLY a JSON object:
 
   const threatIntel = (data.threatIntel || []).find((t: any) => t.ip === data.linkedAlert?.source_ip);
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 z-[200] bg-black flex flex-col items-center justify-center">
-        <div className="relative mb-12">
-          <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full animate-pulse" />
-          <div className="relative w-20 h-20 rounded-3xl bg-neutral-900 border border-neutral-800 flex items-center justify-center">
-            <RefreshCw className="w-10 h-10 text-blue-500 animate-spin" />
-          </div>
-        </div>
-        <h3 className="text-sm font-bold text-white uppercase tracking-widest animate-pulse">Initializing Investigation Workspace...</h3>
-      </div>
-    );
-  }
-
   return (
-    <motion.div 
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
+    <div 
       className="fixed inset-0 z-[200] bg-black flex flex-col shadow-2xl overflow-hidden"
     >
       {/* False Positive Banner */}
@@ -829,20 +812,24 @@ Respond with ONLY a JSON object:
         </div>
 
         <div className="flex items-center gap-3">
-          <button 
-            onClick={onAddCurrentFindingsAsEvidence}
-            className="flex items-center gap-2 px-5 py-2.5 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 hover:border-white/10 text-neutral-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all group"
-          >
-             <Target className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-             Capture Evidence
-          </button>
-          <button
-            onClick={() => setShowCreateCasePopup(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-600/20"
-          >
-            <Briefcase className="w-4 h-4" />
-            Create Case
-          </button>
+          {workspace.status !== 'closed' && (
+            <button 
+              onClick={onAddCurrentFindingsAsEvidence}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 hover:border-white/10 text-neutral-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all group"
+            >
+               <Target className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+               Capture Evidence
+            </button>
+          )}
+          {workspace.status !== 'closed' && (
+            <button
+              onClick={() => setShowCreateCasePopup(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-blue-600/20"
+            >
+              <Briefcase className="w-4 h-4" />
+              Create Case
+            </button>
+          )}
           <button 
             onClick={onGenerateReport}
             className="flex items-center gap-2 px-5 py-2.5 bg-purple-500/5 hover:bg-purple-500/10 text-purple-400 border border-purple-500/10 hover:border-purple-500/20 rounded-xl transition-all group"
@@ -1533,13 +1520,15 @@ Respond with ONLY a JSON object:
                   <h4 className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Investigation Checklist</h4>
                 </div>
                 <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => setIsAddingCheckItem(!isAddingCheckItem)}
-                    className="p-1.5 hover:bg-white/5 rounded-lg text-neutral-500 hover:text-emerald-400 transition-all border border-transparent hover:border-emerald-500/10"
-                    title="Add Task"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
+                  {workspace.status !== 'closed' && (
+                    <button 
+                      onClick={() => setIsAddingCheckItem(!isAddingCheckItem)}
+                      className="p-1.5 hover:bg-white/5 rounded-lg text-neutral-500 hover:text-emerald-400 transition-all border border-transparent hover:border-emerald-500/10"
+                      title="Add Task"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-widest leading-none bg-emerald-500/5 px-2 py-1 rounded border border-emerald-500/10">
                     {completedCount} / {checklistItems.length} Done
                   </span>
@@ -1598,12 +1587,16 @@ Respond with ONLY a JSON object:
                  <div className="space-y-1">
                     {checklistItems.map((item: any) => (
                        <div key={item.id} className="flex items-center justify-between group p-1">
-                          <label className="flex items-center gap-3 py-1 flex-1 cursor-pointer overflow-hidden">
+                          <label className={cn("flex items-center gap-3 py-1 flex-1 overflow-hidden", workspace.status !== 'closed' && "cursor-pointer")}>
                              <div 
-                               onClick={() => onChecklistUpdate(item.id, !workspace.checklist?.[item.id])}
+                               onClick={() => {
+                                 if (workspace.status === 'closed') return;
+                                 onChecklistUpdate(item.id, !workspace.checklist?.[item.id]);
+                               }}
                                className={cn(
                                  "w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0",
-                                 workspace.checklist?.[item.id] ? "bg-emerald-600 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.2)]" : "bg-black border-neutral-700 group-hover:border-neutral-500"
+                                 workspace.checklist?.[item.id] ? "bg-emerald-600 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.2)]" : "bg-black border-neutral-700 group-hover:border-neutral-500",
+                                 workspace.status === 'closed' && "opacity-50"
                                )}
                              >
                                 {workspace.checklist?.[item.id] && <Check className="w-2.5 h-2.5 text-white" />}
@@ -1615,13 +1608,15 @@ Respond with ONLY a JSON object:
                                 {item.label}
                              </span>
                           </label>
-                          <button 
-                            onClick={() => onRemoveChecklistItem(item.id)}
-                            className="p-1 opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all"
-                            title="Delete Task"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          {workspace.status !== 'closed' && (
+                            <button 
+                              onClick={() => onRemoveChecklistItem(item.id)}
+                              className="p-1 opacity-0 group-hover:opacity-100 text-neutral-600 hover:text-red-400 transition-all"
+                              title="Delete Task"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                        </div>
                     ))}
                     {checklistItems.length === 0 && (
@@ -1773,42 +1768,50 @@ Respond with ONLY a JSON object:
                  </div>
 
                  {/* Add Note Area */}
-                 <div className="p-6 bg-neutral-900/60 border border-neutral-800 rounded-3xl relative overflow-hidden group">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-blue-600 opacity-0 group-focus-within:opacity-100 transition-opacity" />
-                    <textarea 
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      placeholder="Type your observation here..."
-                      className="w-full bg-transparent border-none focus:outline-none text-[12px] text-neutral-300 min-h-[100px] resize-none pb-4 leading-relaxed font-medium"
-                    />
-                    <div className="flex items-center justify-between pt-4 border-t border-neutral-800/50">
-                       <label className="flex items-center gap-2.5 cursor-pointer group/key">
-                          <div 
-                            onClick={() => setIsKeyFinding(!isKeyFinding)}
-                            className={cn(
-                              "w-5 h-5 rounded-lg border flex items-center justify-center transition-all",
-                              isKeyFinding ? "bg-yellow-500/20 border-yellow-500/50 shadow-lg shadow-yellow-500/20" : "bg-black border-neutral-800 group-hover/key:border-neutral-700"
-                            )}
-                          >
-                             <Star className={cn("w-3 h-3 transition-all", isKeyFinding ? "text-yellow-400 fill-current" : "text-neutral-700")} />
-                          </div>
-                          <span className={cn("text-[10px] font-bold uppercase tracking-widest", isKeyFinding ? "text-yellow-400" : "text-neutral-600 hover:text-neutral-400 transition-colors")}>
-                             Mark as Key Finding
-                          </span>
-                       </label>
-                       <button 
-                         onClick={() => {
-                            if (!noteText.trim()) return;
-                            onAddNote(noteText, isKeyFinding);
-                            setNoteText('');
-                            setIsKeyFinding(false);
-                         }}
-                         className="px-6 py-2.5 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400 border border-blue-500/10 hover:border-blue-500/20 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all group active:scale-95"
-                       >
-                          Add Observation
-                       </button>
-                    </div>
-                 </div>
+                 {workspace.status !== 'closed' ? (
+                   <div className="p-6 bg-neutral-900/60 border border-neutral-800 rounded-3xl relative overflow-hidden group">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-blue-600 opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                      <textarea 
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        placeholder="Type your observation here..."
+                        className="w-full bg-transparent border-none focus:outline-none text-[12px] text-neutral-300 min-h-[100px] resize-none pb-4 leading-relaxed font-medium"
+                      />
+                      <div className="flex items-center justify-between pt-4 border-t border-neutral-800/50">
+                         <label className="flex items-center gap-2.5 cursor-pointer group/key">
+                            <div 
+                              onClick={() => setIsKeyFinding(!isKeyFinding)}
+                              className={cn(
+                                "w-5 h-5 rounded-lg border flex items-center justify-center transition-all",
+                                isKeyFinding ? "bg-yellow-500/20 border-yellow-500/50 shadow-lg shadow-yellow-500/20" : "bg-black border-neutral-800 group-hover/key:border-neutral-700"
+                              )}
+                            >
+                               <Star className={cn("w-3 h-3 transition-all", isKeyFinding ? "text-yellow-400 fill-current" : "text-neutral-700")} />
+                            </div>
+                            <span className={cn("text-[10px] font-bold uppercase tracking-widest", isKeyFinding ? "text-yellow-400" : "text-neutral-600 hover:text-neutral-400 transition-colors")}>
+                               Mark as Key Finding
+                            </span>
+                         </label>
+                         <button 
+                           onClick={() => {
+                              if (!noteText.trim()) return;
+                              onAddNote(noteText, isKeyFinding);
+                              setNoteText('');
+                              setIsKeyFinding(false);
+                           }}
+                           className="px-6 py-2.5 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400 border border-blue-500/10 hover:border-blue-500/20 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all group active:scale-95"
+                         >
+                            Add Observation
+                         </button>
+                      </div>
+                   </div>
+                 ) : (
+                   <div className="p-12 border border-dashed border-neutral-800 rounded-3xl flex flex-col items-center justify-center text-center opacity-40 bg-neutral-900/20">
+                      <MessageSquare className="w-8 h-8 text-neutral-600 mb-3" />
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Investigation Finalized</p>
+                      <p className="text-[9px] text-neutral-600 mt-1 uppercase">Note taking is disabled in review mode</p>
+                   </div>
+                 )}
               </div>
             </div>
           </div>
@@ -3067,6 +3070,6 @@ Respond with ONLY a JSON object:
           </div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 };

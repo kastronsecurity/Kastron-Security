@@ -311,7 +311,7 @@ export default function MarketingPage({ onGetStarted, onLogin }: MarketingPagePr
                     <span className="ml-2 text-neutral-600 text-[11px] font-bold uppercase tracking-widest">Terminal</span>
                   </div>
                   <div className="space-y-2">
-                    <p className="text-neutral-500">$ curl -s https://kastronsec.com/install | bash</p>
+                    <p className="text-neutral-500">$ curl -s https://kastron-security.onrender.com/install | bash</p>
                     <p className="text-blue-400">Checking system compatibility...</p>
                     <p className="text-green-400">✓ System compatible (Ubuntu 22.04)</p>
                     <p className="text-blue-400">Downloading KastronSec Agent v2.4.1...</p>

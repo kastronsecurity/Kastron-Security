@@ -1114,7 +1114,7 @@ const AlertRow = ({
         const text = await apiResponse.text();
         console.warn('Threat intel API returned non-JSON response:', text.substring(0, 100));
         if (apiResponse.status === 404 && text.includes('<!DOCTYPE')) {
-          setFetchError("Backend API unavailable on Netlify. Please use a full-stack platform like Cloud Run to run the Express server.");
+          setFetchError("Backend API unavailable. Please use a full-stack platform like Cloud Run to run the Express server.");
         }
       }
 

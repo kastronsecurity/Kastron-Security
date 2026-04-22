@@ -1275,7 +1275,7 @@ const NewCaseModal = ({ onClose, onCreated }: any) => {
              <div className="space-y-2">
               <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Lead Analyst (Email)</label>
               <input 
-                placeholder="analyst@kastronsec.com"
+                placeholder="analyst@kastron-security.com"
                 className="w-full bg-black border border-neutral-800 rounded-xl px-5 py-4 text-sm text-white focus:outline-none focus:border-blue-500"
                 value={formData.assigned_to}
                 onChange={(e) => setFormData(prev => ({ ...prev, assigned_to: e.target.value }))}
