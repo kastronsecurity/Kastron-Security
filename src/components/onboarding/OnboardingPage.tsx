@@ -24,6 +24,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
 import { cn } from '../../lib/utils';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface OnboardingPageProps {
   user: any;
@@ -40,6 +41,11 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
   const [wazuhGroup, setWazuhGroup] = useState<string | null>(null);
   const [loadingKey, setLoadingKey] = useState(true);
   const [client, setClient] = useState<any>(null);
+
+  // MFA state
+  const [enrollmentData, setEnrollmentData] = useState<any>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaEnrolled, setMfaEnrolled] = useState(false);
 
   // Wizard state
   const [selections, setSelections] = useState<string[]>([]);
@@ -248,6 +254,47 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
 
       if (syslogError) throw syslogError;
       setStep(3);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleStartMFA = async () => {
+    if (!supabase) return;
+    setIsSaving(true);
+    try {
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+      });
+      if (error) throw error;
+      setEnrollmentData(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleVerifyMFA = async () => {
+    if (!supabase || !enrollmentData) return;
+    setIsSaving(true);
+    try {
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: enrollmentData.id,
+      });
+      if (challengeError) throw challengeError;
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId: enrollmentData.id,
+        challengeId: challengeData.id,
+        code: mfaCode,
+      });
+      if (verifyError) throw verifyError;
+
+      setMfaEnrolled(true);
+      setStep(6);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -894,18 +941,18 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
 
                 <div className="flex justify-between items-center pt-8 border-t border-white/5">
                   <button 
-                    onClick={() => { setSkipped(true); handleComplete(); }}
+                    onClick={() => { setSkipped(true); setStep(5); }}
                     className="group flex items-center gap-2 text-neutral-600 hover:text-white transition-colors"
                   >
                     <span className="text-[11px] font-bold uppercase tracking-widest">Skip for now</span>
                     <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
                   </button>
                   <button 
-                    onClick={handleComplete}
+                    onClick={() => setStep(5)}
                     disabled={agents.length === 0 && !skipped}
                     className="bg-white text-black px-10 py-4 rounded-md font-bold text-sm transition-all hover:bg-neutral-200 active:scale-95 disabled:opacity-30"
                   >
-                    Complete Setup
+                    Continue to Security
                   </button>
                 </div>
 
@@ -918,6 +965,80 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
             {step === 5 && (
               <motion.div 
                 key="step5"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="space-y-8"
+              >
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-500/10 flex items-center justify-center mx-auto mb-6">
+                    <Shield className="w-8 h-8 text-blue-500" />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-4 tracking-tight">Security Hardening</h2>
+                  <p className="text-neutral-500 max-w-sm mx-auto font-medium leading-relaxed">
+                    Protect your security portal by enabling Two-Step Verification (MFA).
+                  </p>
+                </div>
+
+                {!enrollmentData ? (
+                  <div className="bg-[#0a0a0a] border border-neutral-800 rounded-2xl p-8 text-center space-y-6">
+                    <Lock className="w-12 h-12 text-neutral-700 mx-auto" />
+                    <p className="text-sm text-neutral-400 max-w-xs mx-auto leading-relaxed font-medium">
+                      Mandatory for production environments. Adds an extra layer of protection against unauthorized access.
+                    </p>
+                    <button
+                      onClick={handleStartMFA}
+                      disabled={isSaving}
+                      className="w-full bg-white text-black py-4 rounded-xl font-bold text-sm hover:bg-neutral-200 transition-all disabled:opacity-50"
+                    >
+                      {isSaving ? 'Initializing...' : 'Enable 2FA Now'}
+                    </button>
+                    <button
+                      onClick={() => setStep(6)}
+                      className="text-[10px] font-bold text-neutral-600 uppercase tracking-widest hover:text-white transition-colors"
+                    >
+                      I'll do this later
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 space-y-8">
+                    <div className="text-center space-y-4">
+                      <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">1. Scan this code</p>
+                      <div className="bg-white p-4 rounded-xl inline-block mx-auto">
+                        <QRCodeSVG value={enrollmentData.totp.uri} size={160} />
+                      </div>
+                      <p className="text-[11px] text-neutral-500 max-w-[200px] mx-auto leading-relaxed">
+                        Use Google Authenticator or Authy to scan the QR code.
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest text-center">2. Enter code</p>
+                      <input 
+                        type="text"
+                        placeholder="000 000"
+                        value={mfaCode}
+                        onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').substring(0, 6))}
+                        className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-4 text-center text-2xl font-mono tracking-[0.5em] text-white focus:outline-none focus:border-blue-500 transition-all"
+                      />
+                      {error && <p className="text-red-500 text-[10px] text-center font-bold">{error}</p>}
+                    </div>
+
+                    <button
+                      onClick={handleVerifyMFA}
+                      disabled={isSaving || mfaCode.length !== 6}
+                      className="w-full bg-white text-black py-4 rounded-xl font-bold text-sm hover:bg-neutral-200 transition-all disabled:opacity-30"
+                    >
+                      {isSaving ? 'Verifying...' : 'Complete Security Setup'}
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {step === 6 && (
+              <motion.div 
+                key="step6"
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.02 }}

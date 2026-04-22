@@ -64,6 +64,7 @@ import ReportsPage from './components/reports/ReportsPage';
 import EscalationsPage from './components/escalations/EscalationsPage';
 import EntitiesPage from './components/entities/EntitiesPage';
 import { SettingsPage } from './components/settings/SettingsPage';
+import MFALogin from './components/auth/MFALogin';
 import { supabase } from './lib/supabase';
 import { useClient } from './contexts/ClientContext';
 import logo from './assets/logo.png';
@@ -148,7 +149,7 @@ const UnderConstruction = ({ title }: { title: string }) => (
 );
 
 export default function App() {
-  const { currentClient, user, loading: clientLoading, authLoading, refreshClient, agentCount, alertCount, onboardingCompleted } = useClient();
+  const { currentClient, user, loading: clientLoading, authLoading, mfaRequired, mfaLoading, refreshClient, agentCount, alertCount, onboardingCompleted } = useClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'alerts' | 'escalations' | 'cases' | 'onboarding' | 'agents' | 'rules' | 'entities' | 'timeline' | 'reports' | 'user-cog' | 'integrations' | 'audit' | 'settings' | 'api-logs' | 'support'>('dashboard');
   
@@ -411,12 +412,25 @@ export default function App() {
     }
   };
 
-  if (authLoading || (clientLoading && !currentClient)) {
+  if (authLoading || (clientLoading && !currentClient) || mfaLoading) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
           <span className="text-neutral-500 text-xs font-bold uppercase tracking-widest animate-pulse">Initializing SOC...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && mfaRequired) {
+    return (
+      <div className="h-screen bg-black flex items-center justify-center p-8">
+        <div className="w-full max-w-md">
+          <MFALogin 
+            onSuccess={() => refreshClient()} 
+            onCancel={() => supabase.auth.signOut()} 
+          />
         </div>
       </div>
     );

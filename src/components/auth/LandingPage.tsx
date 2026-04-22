@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
 import { cn } from '../../lib/utils';
+import MFALogin from './MFALogin';
 
 interface LandingPageProps {
   onLogin: (user: any) => void;
@@ -24,6 +25,7 @@ interface LandingPageProps {
 
 const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login', onBack }) => {
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
+  const [isMFA, setIsMFA] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -47,6 +49,18 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
         });
         if (error) throw error;
         
+        if (data.session) {
+          // Check if MFA is required
+          const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+          if (factorsError) throw factorsError;
+
+          const hasMFA = factors.all.some(f => f.status === 'verified');
+          if (hasMFA) {
+            setIsMFA(true);
+            return;
+          }
+        }
+
         if (data.user) {
           onLogin(data.user);
         }
@@ -277,121 +291,130 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
-          <div className="mb-12">
-            <h2 className="text-3xl font-bold text-white mb-3 tracking-tighter">
-              {isLogin ? 'Welcome Back' : 'Create Account'}
-            </h2>
-            <p className="text-neutral-500 text-sm font-medium leading-relaxed">
-              {isLogin 
-                ? 'Enter your credentials to access your security portal.' 
-                : 'Join KastronSec and start securing your infrastructure today.'}
-            </p>
-          </div>
+          {isMFA ? (
+            <MFALogin 
+              onSuccess={onLogin} 
+              onCancel={() => setIsMFA(false)} 
+            />
+          ) : (
+            <>
+              <div className="mb-12">
+                <h2 className="text-3xl font-bold text-white mb-3 tracking-tighter">
+                  {isLogin ? 'Welcome Back' : 'Create Account'}
+                </h2>
+                <p className="text-neutral-500 text-sm font-medium leading-relaxed">
+                  {isLogin 
+                    ? 'Enter your credentials to access your security portal.' 
+                    : 'Join KastronSec and start securing your infrastructure today.'}
+                </p>
+              </div>
 
-          <form onSubmit={handleAuth} className="space-y-6">
-            {error && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="p-4 bg-red-500/5 border border-red-500/10 rounded-lg flex items-center gap-3 text-red-500 text-[13px] font-medium"
-              >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <p>{error}</p>
-              </motion.div>
-            )}
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Email Address</label>
-              <input 
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
-                className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
-              />
-            </div>
-
-            {!isLogin && (
-              <>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Full Name</label>
-                  <input 
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="John Doe"
-                    className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Company Name</label>
-                  <input 
-                    type="text"
-                    required
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="Acme Corp"
-                    className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center ml-1">
-                <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Password</label>
-                {isLogin && (
-                  <button type="button" className="text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors uppercase tracking-widest">Forgot Password?</button>
+              <form onSubmit={handleAuth} className="space-y-6">
+                {error && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-red-500/5 border border-red-500/10 rounded-lg flex items-center gap-3 text-red-500 text-[13px] font-medium"
+                  >
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <p>{error}</p>
+                  </motion.div>
                 )}
-              </div>
-              <div className="relative">
-                <input 
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
-                />
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Email Address</label>
+                  <input 
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
+                  />
+                </div>
+
+                {!isLogin && (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Full Name</label>
+                      <input 
+                        type="text"
+                        required
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="John Doe"
+                        className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Company Name</label>
+                      <input 
+                        type="text"
+                        required
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="Acme Corp"
+                        className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center ml-1">
+                    <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Password</label>
+                    {isLogin && (
+                      <button type="button" className="text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors uppercase tracking-widest">Forgot Password?</button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input 
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-white/[0.02] border border-white/10 rounded-md px-4 py-3 text-white placeholder-neutral-600 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20 transition-all text-sm"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
                 <button 
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white transition-colors"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-white hover:bg-neutral-200 disabled:bg-white/10 disabled:text-neutral-600 disabled:cursor-not-allowed text-black font-bold py-3 rounded-md transition-all flex items-center justify-center gap-2 text-sm"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin"></div>
+                  ) : (
+                    <>
+                      {isLogin ? 'Sign In' : 'Create Account'}
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
+              </form>
+
+              <div className="mt-10 pt-10 border-t border-white/5 text-center">
+                <p className="text-neutral-500 text-[13px] font-medium">
+                  {isLogin ? "Don't have an account?" : "Already have an account?"}
+                  <button 
+                    onClick={() => setIsLogin(!isLogin)}
+                    className="ml-2 text-white font-bold hover:text-blue-500 transition-colors"
+                  >
+                    {isLogin ? 'Sign Up' : 'Sign In'}
+                  </button>
+                </p>
               </div>
-            </div>
-
-            <button 
-              type="submit"
-              disabled={loading}
-              className="w-full bg-white hover:bg-neutral-200 disabled:bg-white/10 disabled:text-neutral-600 disabled:cursor-not-allowed text-black font-bold py-3 rounded-md transition-all flex items-center justify-center gap-2 text-sm"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-black/30 border-t-black rounded-full animate-spin"></div>
-              ) : (
-                <>
-                  {isLogin ? 'Sign In' : 'Create Account'}
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-
-          <div className="mt-10 pt-10 border-t border-white/5 text-center">
-            <p className="text-neutral-500 text-[13px] font-medium">
-              {isLogin ? "Don't have an account?" : "Already have an account?"}
-              <button 
-                onClick={() => setIsLogin(!isLogin)}
-                className="ml-2 text-white font-bold hover:text-blue-500 transition-colors"
-              >
-                {isLogin ? 'Sign Up' : 'Sign In'}
-              </button>
-            </p>
-          </div>
+            </>
+          )}
 
           <div className="mt-12 flex items-center justify-center gap-8 opacity-30 grayscale hover:grayscale-0 transition-all duration-500">
             <div className="flex items-center gap-2">

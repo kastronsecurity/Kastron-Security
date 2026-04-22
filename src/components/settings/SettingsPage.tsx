@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Bell, ShieldAlert, Server, CheckCircle2, Settings as SettingsIcon, Clock } from 'lucide-react';
 import { useNotifications, NotificationType } from '../../contexts/NotificationContext';
 import { cn } from '../../lib/utils';
+import { MFASettings } from './MFASettings';
 
 export const SettingsPage = () => {
   const { settings, updateSettings } = useNotifications();
@@ -190,6 +191,8 @@ export const SettingsPage = () => {
 
           </div>
         </section>
+
+        <MFASettings />
       </div>
     </div>
   </div>

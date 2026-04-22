@@ -28,6 +28,8 @@ interface ClientContextType {
   user: any | null;
   loading: boolean;
   authLoading: boolean;
+  mfaRequired: boolean;
+  mfaLoading: boolean;
   agentCount: number;
   alertCount: number;
   onboardingCompleted: boolean;
@@ -41,6 +43,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaLoading, setMfaLoading] = useState(true);
   const [agentCount, setAgentCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
@@ -117,6 +121,21 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setAuthLoading(false);
 
       if (newUser) {
+        // Check MFA status
+        const checkMFA = async () => {
+          setMfaLoading(true);
+          try {
+            const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+            if (error) throw error;
+            console.log('MFA Check:', data);
+            setMfaRequired(data.nextLevel === 'aal2' && data.currentLevel !== 'aal2');
+          } catch (err) {
+            console.error('Error checking MFA level:', err);
+          } finally {
+            setMfaLoading(false);
+          }
+        };
+        checkMFA();
         fetchClient(newUser);
       } else {
         setCurrentClient(null);
@@ -169,6 +188,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       user, 
       loading, 
       authLoading, 
+      mfaRequired,
+      mfaLoading,
       agentCount,
       alertCount,
       onboardingCompleted,

@@ -1047,6 +1047,7 @@ const AlertRow = ({
 
   const [intel, setIntel] = useState<SecurityAlert['threat_intel'] | null>(getBestIntel());
   const [isFetchingIntel, setIsFetchingIntel] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [showIntel, setShowIntel] = useState(() => {
     const best = getBestIntel();
     return !!(best && best.reputation !== 'Unknown' && best.reputation !== 'Error');
