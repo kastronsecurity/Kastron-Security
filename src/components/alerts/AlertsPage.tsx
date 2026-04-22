@@ -46,7 +46,7 @@ import { LogViewer } from '../ui/LogViewer';
 import { supabase } from '../../lib/supabase';
 import { useClient } from '../../contexts/ClientContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { generateStructuredSOCReport } from '../../lib/gemini';
+import { generateStructuredSOCReport, generateAINarrative } from '../../lib/gemini';
 import { downloadIncidentReport } from '../../utils/reportExporter';
 
 // --- Types ---
@@ -298,9 +298,8 @@ const AIAssistant = ({ alert }: { alert: SecurityAlert }) => {
     setIsTyping(true);
 
     try {
-      const prompt = `You are a cybersecurity expert assistant. You are helping an analyst investigate a security alert.
-      
-      ALERT CONTEXT:
+      const systemInstruction = "You are a cybersecurity expert assistant. You are helping an analyst investigate a security alert.";
+      const prompt = `ALERT CONTEXT:
       ID: ${alert.id}
       Description: ${alert.description}
       Severity: ${alert.severity}
@@ -312,25 +311,11 @@ const AIAssistant = ({ alert }: { alert: SecurityAlert }) => {
       
       User Question: ${input}`;
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const aiResponse = await fetch('/api/gemini-analysis', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': session ? `Bearer ${session.access_token}` : ''
-        },
-        body: JSON.stringify({ prompt })
-      });
-
-      if (!aiResponse.ok) {
-        throw new Error(`AI Proxy failed with status: ${aiResponse.status}`);
-      }
-
-      const result = await aiResponse.json();
+      const result = await generateAINarrative(prompt, systemInstruction);
       
       const assistantMessage = { 
         role: 'assistant' as const, 
-        content: result.response || result.details || result.text || (typeof result === 'string' ? result : "I'm sorry, I couldn't process that request.")
+        content: result.response || result.details || result.text || result.result || (typeof result === 'string' ? result : "I'm sorry, I couldn't process that request.")
       };
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
@@ -1147,41 +1132,21 @@ const AlertRow = ({
       // If cacheOnly is true, we don't proceed to AI fallback
       if (cacheOnly) return;
 
-      // If API fails or is not configured, fallback to our secure Netlify Function proxy
-      const prompt = `Perform a real-time threat intelligence lookup for the following indicator:
-      
+      // If API fails or is not configured, fallback to our secure Gemini SDK
+      const systemInstruction = "Perform a real-time threat intelligence lookup for security indicators.";
+      const prompt = `Indicator Analysis:
       Source IP: ${alert.source_ip}
       Alert Context: ${alert.description}
       
-      Search for this IP on threat intelligence platforms (like VirusTotal, AbuseIPDB, AlienVault) using your search tool. 
-      Determine if the IP is known for malicious activity, its reputation, and any associated threat actors or malware families.
+      Search for this IP on threat intelligence platforms. 
+      Determine if the IP is known for malicious activity, its reputation, and any associated threat actors.
       
       CRITICAL ACCURACY RULES:
-      - If you find NO clear evidence of malicious activity (e.g., 0/90 on VirusTotal), you MUST return reputation: "Clean" and malicious: false.
-      - Do NOT flag an IP as malicious just because it is a public cloud IP (AWS, Azure, Google) or a common service.
-      - Only flag as "Malicious" if there are multiple recent reports of attacks, malware delivery, or C2 activity.
-      - If the results are mixed, use "Suspicious".
-      
-      Return the analysis in JSON format with these exact keys:
-      - reputation: (string, e.g., "Malicious", "Suspicious", "Clean", "Unknown")
-      - malicious: (boolean)
-      - details: (string, a concise summary of your findings from the search)
-      - provider: (string, "Google Search Grounded AI")`;
+      - If NO clear evidence of malicious activity, return reputation: "Clean" and malicious: false.
+      - Do NOT flag public cloud IPs as malicious unless confirmed.
+      - Return JSON format: reputation, malicious, details, provider.`;
 
-      const aiResponse = await fetch('/api/gemini-analysis', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': session ? `Bearer ${session.access_token}` : ''
-        },
-        body: JSON.stringify({ prompt, ip: alert.source_ip })
-      });
-
-      if (!aiResponse.ok) {
-        throw new Error(`AI Proxy failed with status: ${aiResponse.status}`);
-      }
-
-      const result = await aiResponse.json();
+      const result = await generateAINarrative(prompt, systemInstruction);
       
       const aiIntel = {
         reputation: result.reputation || 'Unknown',
@@ -1739,31 +1704,21 @@ const AlertDetailsModal = ({
         return;
       }
 
-      const prompt = `Perform a real-time threat intelligence lookup for the following indicator:
+      const systemInstruction = "Perform a real-time threat intelligence lookup for security indicators.";
+      const prompt = `Indicator Analysis:
       Source IP: ${alert.source_ip}
       Alert Context: ${alert.description}
-      Search for this IP on threat intelligence platforms. Determine if the IP is known for malicious activity.`;
+      Search for this IP on threat intelligence platforms. Determine if the IP is known for malicious activity. Returns JSON.`;
 
-      const aiResponse = await fetch('/api/gemini-analysis', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': session ? `Bearer ${session.access_token}` : ''
-        },
-        body: JSON.stringify({ prompt, ip: alert.source_ip })
-      });
-
-      if (aiResponse.ok) {
-        const result = await aiResponse.json();
-        const aiIntel = {
-          reputation: result.reputation || 'Unknown',
-          malicious: !!result.malicious,
-          details: result.details || 'No specific details found.',
-          provider: result.provider || 'Gemini AI'
-        };
-        setLocalIntel(aiIntel);
-        if (onIntelUpdate) onIntelUpdate(alert.id, aiIntel);
-      }
+      const result = await generateAINarrative(prompt, systemInstruction);
+      const aiIntel = {
+        reputation: result.reputation || 'Unknown',
+        malicious: !!result.malicious,
+        details: result.details || 'No specific details found.',
+        provider: result.provider || 'Gemini AI'
+      };
+      setLocalIntel(aiIntel);
+      if (onIntelUpdate) onIntelUpdate(alert.id, aiIntel);
     } catch (error) {
       console.error("Error fetching threat intel in modal:", error);
     } finally {

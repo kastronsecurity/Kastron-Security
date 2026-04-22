@@ -279,6 +279,115 @@ async function startServer() {
     return 'LOW';
   }
 
+  // Generic IOC Threat Intel Route (IP, Domain, Hash)
+  app.get("/api/threat-intel/ioc/:ioc", authenticateUser, async (req, res) => {
+    const { ioc } = req.params;
+    const forceRefresh = req.query.refresh === 'true';
+    const CACHE_TTL_HOURS = 24;
+
+    try {
+      // 1. Detect IOC Type
+      let iocType = 'ip'; // default
+      if (/^[a-fA-F0-9]{32}$|^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$/.test(ioc)) {
+        iocType = 'hash';
+      } else if (/[a-zA-Z]/.test(ioc) && ioc.includes('.')) {
+        iocType = 'domain';
+      } else if (/^(\d{1,3}\.){3}\d{1,3}$/.test(ioc)) {
+        iocType = 'ip';
+      }
+
+      // 2. Check Cache
+      if (supabase && !forceRefresh) {
+        const { data: cachedData } = await supabase
+          .from('threat_intel_cache')
+          .select('*')
+          .eq('ip', ioc) // we use 'ip' column to store any ioc string for now
+          .maybeSingle();
+
+        if (cachedData) {
+          const lastUpdated = new Date(cachedData.last_updated);
+          const diffHours = (new Date().getTime() - lastUpdated.getTime()) / (1000 * 60 * 60);
+          if (diffHours < CACHE_TTL_HOURS) {
+            return res.json({ ...cachedData, cached: true });
+          }
+        }
+      }
+
+      let intelResult: any = null;
+      const vtKey = process.env.VIRUSTOTAL_API_KEY;
+
+      // 3. VirusTotal Logic based on type
+      if (vtKey) {
+        try {
+          let vtEndpoint = `https://www.virustotal.com/api/v3/ip_addresses/${ioc}`;
+          if (iocType === 'domain') vtEndpoint = `https://www.virustotal.com/api/v3/domains/${ioc}`;
+          if (iocType === 'hash') vtEndpoint = `https://www.virustotal.com/api/v3/files/${ioc}`;
+
+          const vtResponse = await fetch(vtEndpoint, { headers: { 'x-apikey': vtKey } });
+          if (vtResponse.ok) {
+            const data = await vtResponse.json();
+            const stats = data.data.attributes.last_analysis_stats;
+            const maliciousCount = stats.malicious;
+            const suspiciousCount = stats.suspicious;
+            
+            intelResult = {
+              reputation: maliciousCount > 0 ? "Malicious" : suspiciousCount > 0 ? "Suspicious" : "Clean",
+              malicious: maliciousCount > 0,
+              details: `VirusTotal: ${maliciousCount} malicious, ${suspiciousCount} suspicious detections. ${data.data.attributes.meaningful_name || data.data.attributes.as_owner || ''}`,
+              provider: "VirusTotal"
+            };
+          }
+        } catch (e) { console.error("VT Error:", e); }
+      }
+
+      // 4. AbuseIPDB Fallback (Only for IPs)
+      if (!intelResult && iocType === 'ip') {
+        const abuseKey = process.env.ABUSEIPDB_API_KEY;
+        if (abuseKey) {
+          try {
+            const abuseResponse = await fetch(`https://api.abuseipdb.com/api/v2/check?ipAddress=${ioc}`, {
+              headers: { 'Key': abuseKey, 'Accept': 'application/json' }
+            });
+            if (abuseResponse.ok) {
+              const data = await abuseResponse.json();
+              const score = data.data.abuseConfidenceScore;
+              intelResult = {
+                reputation: score >= 75 ? "Malicious" : score >= 25 ? "Suspicious" : "Clean",
+                malicious: score >= 50,
+                details: `AbuseIPDB Score: ${score}%. Usage: ${data.data.usageType || 'N/A'}.`,
+                provider: "AbuseIPDB"
+              };
+            }
+          } catch (e) { console.error("Abuse Error:", e); }
+        }
+      }
+
+      // 5. Update Cache & Return
+      if (intelResult) {
+        if (supabase) {
+          supabase.from('threat_intel_cache').upsert({
+            ip: ioc,
+            reputation: intelResult.reputation,
+            malicious: intelResult.malicious,
+            details: intelResult.details,
+            provider: intelResult.provider,
+            last_updated: new Date().toISOString()
+          }, { onConflict: 'ip' }).then();
+        }
+        return res.json(intelResult);
+      }
+
+      res.json({
+        reputation: "Unknown",
+        malicious: false,
+        details: "No current intelligence available for this IOC.",
+        provider: "System"
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Threat Intel Proxy Route with Caching and Failover
   app.get("/api/threat-intel/ip/:ip", authenticateUser, async (req, res) => {
     const { ip } = req.params;

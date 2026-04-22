@@ -39,7 +39,13 @@ import {
   Info,
   Terminal,
   Layers,
-  ShieldCheck
+  ShieldCheck,
+  ArrowUpCircle,
+  Anchor,
+  MessageSquare,
+  Save,
+  Briefcase,
+  Target
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useClient } from '../../contexts/ClientContext';
@@ -1780,6 +1786,7 @@ export default function EscalationsPage() {
   const { currentClient, user } = useClient();
   const { settings, addNotification } = useNotifications();
   const [escalations, setEscalations] = useState<Escalation[]>([]);
+  const [activeWorkspaces, setActiveWorkspaces] = useState<Record<string, string>>({});
   
   // Workspace State
   const [showWorkspace, setShowWorkspace] = useState(false);
@@ -1792,12 +1799,16 @@ export default function EscalationsPage() {
     threatIntel: [],
     agentAlerts: [],
     relatedAlerts: [],
+    timelineAlerts: [],
     ipHistory: [],
-    agentProfile: null
+    agentProfile: null,
+    correlatedData: { groups: [], alerts: [] },
+    similarCases: []
   });
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [threatIntelLoading, setThreatIntelLoading] = useState(false);
   const [showVerdictModal, setShowVerdictModal] = useState(false);
+  const [selectedVerdictId, setSelectedVerdictId] = useState<string | null>(null);
   const [verdictReason, setVerdictReason] = useState('');
   const [verdictConfidence, setVerdictConfidence] = useState(90);
   const [loading, setLoading] = useState(true);
@@ -2338,6 +2349,19 @@ Respond with ONLY a JSON object:
       
       if (error) throw error;
       setEscalations(data || []);
+
+      // Fetch active workspaces to show "View Investigation" button
+      const { data: wsData } = await supabase
+        .from('investigation_workspaces')
+        .select('id, escalation_id')
+        .eq('client_id', currentClient.id)
+        .eq('status', 'active');
+      
+      const wsMap: Record<string, string> = {};
+      wsData?.forEach(ws => {
+        wsMap[ws.escalation_id] = ws.id;
+      });
+      setActiveWorkspaces(wsMap);
     } catch (e) {
       console.error('Error fetching escalations:', e);
     } finally {
@@ -2404,6 +2428,9 @@ Respond with ONLY a JSON object:
         if (wsError) throw wsError;
         workspace = newWorkspace;
 
+        // Update activeWorkspaces mapping to trigger button label change
+        setActiveWorkspaces(prev => ({ ...prev, [esc.id]: newWorkspace.id }));
+
         // Also create a case linked to this escalation
         const { data: newCase, error: caseError } = await supabase
           .from('cases')
@@ -2449,50 +2476,237 @@ Respond with ONLY a JSON object:
     setWorkspaceLoading(true);
     
     try {
+      const { data: linkedAlert } = esc.alert_id ? await supabase.from('alerts').select('*').eq('id', esc.alert_id).single() : { data: null };
+      
+      if (!linkedAlert && !esc.alert_id) {
+         setWorkspaceLoading(false);
+         return;
+      }
+
+      const agentName = linkedAlert?.agent_name || esc.agent_name;
+
+      // Parallel helper for agent profile with fallback logic
+      const fetchAgentProfile = async (name: string) => {
+        if (!name || !currentClient) return null;
+        
+        // Try exact name match
+        const { data: agent } = await supabase
+          .from('agents')
+          .select('*')
+          .eq('client_id', currentClient.id)
+          .ilike('name', name.trim())
+          .maybeSingle();
+        
+        if (agent) return agent;
+        
+        // Try partial match
+        const { data: agents } = await supabase
+          .from('agents')
+          .select('*')
+          .eq('client_id', currentClient.id)
+          .ilike('name', `%${name.trim()}%`)
+          .limit(1);
+        
+        return agents?.[0] || null;
+      };
+
+      // Helper for broad timeline
+      const fetchIncidentTimeline = async (alert: any) => {
+        if (!alert || !currentClient) return [];
+        
+        const alertTime = new Date(alert.timestamp);
+        const windowStart = new Date(alertTime.getTime() - 60 * 60 * 1000).toISOString();
+        const windowEnd = new Date(alertTime.getTime() + 60 * 60 * 1000).toISOString();
+        
+        let timeline: any[] = [];
+        
+        // Same agent window
+        if (alert.agent_name) {
+          const { data } = await supabase
+            .from('alerts')
+            .select('*')
+            .eq('client_id', currentClient.id)
+            .ilike('agent_name', `%${alert.agent_name}%`)
+            .gte('timestamp', windowStart)
+            .lte('timestamp', windowEnd)
+            .order('timestamp', { ascending: true })
+            .limit(30);
+          if (data) timeline.push(...data);
+        }
+        
+        // Same source IP window
+        if (alert.source_ip && alert.source_ip !== 'N/A') {
+          const { data } = await supabase
+            .from('alerts')
+            .select('*')
+            .eq('client_id', currentClient.id)
+            .eq('source_ip', alert.source_ip)
+            .gte('timestamp', windowStart)
+            .lte('timestamp', windowEnd)
+            .order('timestamp', { ascending: true })
+            .limit(30);
+          if (data) timeline.push(...data);
+        }
+        
+        // Same rule wide window
+        if (alert.rule_id && alert.agent_name) {
+          const dayStart = new Date(alertTime.getTime() - 24 * 60 * 60 * 1000).toISOString();
+          const { data } = await supabase
+            .from('alerts')
+            .select('*')
+            .eq('client_id', currentClient.id)
+            .eq('rule_id', alert.rule_id)
+            .ilike('agent_name', `%${alert.agent_name}%`)
+            .gte('timestamp', dayStart)
+            .order('timestamp', { ascending: true })
+            .limit(20);
+          if (data) timeline.push(...data);
+        }
+        
+        const seen = new Set();
+        return timeline.filter(a => {
+          if (seen.has(a.id)) return false;
+          seen.add(a.id);
+          return true;
+        }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      };
+
+      // Helper for correlated alerts with multi-strategy matching
+      const fetchCorrelatedAlerts = async (linkedAlert: any) => {
+        if (!linkedAlert || !currentClient) return { groups: [], alerts: [] };
+        
+        let relatedAlerts: any[] = [];
+        
+        // Strategy 1: Same rule_id
+        if (linkedAlert.rule_id) {
+          const { data } = await supabase
+            .from('alerts')
+            .select('id, alert_number, description, severity, timestamp, agent_name, source_ip, rule_id, status, raw_log, rule_level')
+            .eq('client_id', currentClient.id)
+            .eq('rule_id', linkedAlert.rule_id)
+            .neq('id', linkedAlert.id)
+            .order('timestamp', { ascending: false })
+            .limit(15);
+          if (data) relatedAlerts.push(...data);
+        }
+        
+        // Strategy 2: Same source_ip (if exists)
+        if (linkedAlert.source_ip && linkedAlert.source_ip !== 'N/A') {
+          const { data } = await supabase
+            .from('alerts')
+            .select('id, alert_number, description, severity, timestamp, agent_name, source_ip, rule_id, status, raw_log, rule_level')
+            .eq('client_id', currentClient.id)
+            .eq('source_ip', linkedAlert.source_ip)
+            .neq('id', linkedAlert.id)
+            .order('timestamp', { ascending: false })
+            .limit(15);
+          if (data) relatedAlerts.push(...data);
+        }
+
+        // Strategy 3: Same agent_name and higher severity
+        if (linkedAlert.agent_name) {
+          const { data } = await supabase
+            .from('alerts')
+            .select('id, alert_number, description, severity, timestamp, agent_name, source_ip, rule_id, status, raw_log, rule_level')
+            .eq('client_id', currentClient.id)
+            .eq('agent_name', linkedAlert.agent_name)
+            .in('severity', ['High', 'Critical'])
+            .neq('id', linkedAlert.id)
+            .order('timestamp', { ascending: false })
+            .limit(15);
+          if (data) relatedAlerts.push(...data);
+        }
+
+        // Strategy 4: Description fuzzy match (similar threats)
+        const simplifiedDesc = (linkedAlert.description || '').split(' ').slice(0, 3).join('%');
+        if (simplifiedDesc.length > 5) {
+          const { data } = await supabase
+            .from('alerts')
+            .select('id, alert_number, description, severity, timestamp, agent_name, source_ip, rule_id, status, raw_log, rule_level')
+            .eq('client_id', currentClient.id)
+            .ilike('description', `%${simplifiedDesc}%`)
+            .neq('id', linkedAlert.id)
+            .order('timestamp', { ascending: false })
+            .limit(10);
+          if (data) relatedAlerts.push(...data);
+        }
+
+        // Fetch groups based on rule_id or source_ip
+        const { data: groups } = await supabase
+          .from('alert_groups')
+          .select('*')
+          .eq('client_id', currentClient.id)
+          .or(`rule_id.eq.${linkedAlert.rule_id},latest_source_ip.eq.${linkedAlert.source_ip || 'NONE'}`)
+          .order('alert_count', { ascending: false })
+          .limit(10);
+
+        // Strategy 5: Alerts from identified groups
+        if (groups && groups.length > 0) {
+          const groupRuleIds = groups.map((g: any) => g.rule_id).filter(Boolean);
+          if (groupRuleIds.length > 0) {
+            const { data } = await supabase
+              .from('alerts')
+              .select('id, alert_number, description, severity, timestamp, agent_name, source_ip, rule_id, status, raw_log, rule_level')
+              .eq('client_id', currentClient.id)
+              .in('rule_id', groupRuleIds)
+              .neq('id', linkedAlert.id)
+              .order('timestamp', { ascending: false })
+              .limit(15);
+            if (data) relatedAlerts.push(...data);
+          }
+        }
+
+        // Deduplicate
+        const uniqueAlerts = Array.from(new Map(relatedAlerts.map(a => [a.id, a])).values())
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 30);
+
+        return { 
+          groups: groups || [], 
+          alerts: uniqueAlerts 
+        };
+      };
+
+      // Helper for similar cases
+      const fetchSimilarCases = async (alert: any) => {
+        if (!alert || !currentClient) return [];
+        const { data } = await supabase.from('cases').select('id, case_number, title, status, severity, verdict, created_at, resolved_at').eq('client_id', currentClient.id).or(`rule_id.eq.${alert.rule_id},source_ip.eq.${alert.source_ip || 'NONE'}`).order('created_at', { ascending: false }).limit(5);
+        return data || [];
+      };
+
       const [
-        alertResult,
         notesResult,
         evidenceResult,
         threatIntelResult,
         agentAlertsResult,
-        relatedAlertsResult,
         ipHistoryResult,
-        agentDataResult
+        agentProfile,
+        timelineAlerts,
+        correlatedData,
+        similarCases
       ] = await Promise.all([
-        // 1. Linked alert full data
-        esc.alert_id ? supabase.from('alerts').select('*').eq('id', esc.alert_id).single() : { data: null },
-        
-        // 2. Existing investigation notes
         supabase.from('investigation_notes').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
-        
-        // 3. Existing evidence
         supabase.from('investigation_evidence').select('*').eq('workspace_id', workspace.id).order('created_at', { ascending: false }),
-        
-        // 4. Threat intel already checked
         supabase.from('workspace_threat_intel').select('*').eq('workspace_id', workspace.id),
-        
-        // 5. Agent alerts last 7 days
-        esc.agent_name ? supabase.from('alerts').select('id, alert_number, description, severity, timestamp, rule_id, source_ip').eq('client_id', currentClient.id).eq('agent_name', esc.agent_name).gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('timestamp', { ascending: false }).limit(20) : { data: [] },
-        
-        // 6. Related alerts
-        supabase.from('alerts').select('id, alert_number, description, severity, timestamp, agent_name, source_ip, rule_id').eq('client_id', currentClient.id).neq('id', esc.alert_id || '').order('timestamp', { ascending: false }).limit(30),
-        
-        // 7. IP history
-        supabase.from('alerts').select('id, alert_number, description, severity, timestamp, agent_name').eq('client_id', currentClient.id).neq('id', esc.alert_id || '').order('timestamp', { ascending: false }).limit(15),
-        
-        // 8. Agent profile
-        esc.agent_name ? supabase.from('agents').select('*').eq('client_id', currentClient.id).eq('name', esc.agent_name).maybeSingle() : { data: null }
+        agentName ? supabase.from('alerts').select('id, alert_number, description, severity, timestamp, rule_id, source_ip').eq('client_id', currentClient.id).ilike('agent_name', `%${agentName}%`).order('timestamp', { ascending: false }).limit(10) : { data: [] },
+        linkedAlert?.source_ip && linkedAlert.source_ip !== 'N/A' ? supabase.from('alerts').select('id, alert_number, description, severity, timestamp, agent_name, rule_id, status, raw_log').eq('client_id', currentClient.id).eq('source_ip', linkedAlert.source_ip).neq('id', linkedAlert.id).order('timestamp', { ascending: false }).limit(15) : { data: [] },
+        fetchAgentProfile(agentName || ''),
+        fetchIncidentTimeline(linkedAlert),
+        fetchCorrelatedAlerts(linkedAlert),
+        fetchSimilarCases(linkedAlert)
       ]);
 
       setWorkspaceData({
-        linkedAlert: alertResult.data,
+        linkedAlert,
         notes: notesResult.data || [],
         evidence: evidenceResult.data || [],
         threatIntel: threatIntelResult.data || [],
         agentAlerts: agentAlertsResult.data || [],
-        relatedAlerts: relatedAlertsResult.data || [],
+        timelineAlerts,
         ipHistory: ipHistoryResult.data || [],
-        agentProfile: agentDataResult.data
+        agentProfile,
+        correlatedData,
+        similarCases
       });
     } catch (err) {
       console.error('Error loading workspace data:', err);
@@ -2610,50 +2824,99 @@ Respond with ONLY a JSON object:
     setActiveWorkspace(prev => ({ ...prev, checklist: newChecklist }));
   };
 
+  const handleAddChecklistItem = async (label: string) => {
+    const defaultItems = [
+      { id: 'fp_check', label: 'Confirmed this is not a false positive' },
+      { id: 'ip_check', label: 'Checked attacker IP reputation' },
+      { id: 'agent_check', label: 'Reviewed agent activity before and after' },
+      { id: 'related_check', label: 'Searched for related alerts across all agents' },
+      { id: 'history_check', label: 'Checked if same IP attacked before' },
+      { id: 'blast_check', label: 'Determined blast radius — other affected systems' },
+      { id: 'notes_check', label: 'Documented key findings in investigation notes' },
+      { id: 'verdict_check', label: 'Ready to set final verdict' },
+    ];
+
+    const currentItems = activeWorkspace.checklist_items || defaultItems;
+    const newItem = { id: `custom_${Date.now()}`, label };
+    const newItems = [...currentItems, newItem];
+    
+    await supabase.from('investigation_workspaces')
+      .update({ checklist_items: newItems })
+      .eq('id', activeWorkspace.id);
+      
+    setActiveWorkspace(prev => ({ ...prev, checklist_items: newItems }));
+    addNotification({ type: 'rule_deployed', title: 'Task Added', description: 'Investigation checklist updated' });
+  };
+
+  const handleRemoveChecklistItem = async (itemId: string) => {
+    const defaultItems = [
+      { id: 'fp_check', label: 'Confirmed this is not a false positive' },
+      { id: 'ip_check', label: 'Checked attacker IP reputation' },
+      { id: 'agent_check', label: 'Reviewed agent activity before and after' },
+      { id: 'related_check', label: 'Searched for related alerts across all agents' },
+      { id: 'history_check', label: 'Checked if same IP attacked before' },
+      { id: 'blast_check', label: 'Determined blast radius — other affected systems' },
+      { id: 'notes_check', label: 'Documented key findings in investigation notes' },
+      { id: 'verdict_check', label: 'Ready to set final verdict' },
+    ];
+    
+    const currentItems = activeWorkspace.checklist_items || defaultItems;
+    const newItems = currentItems.filter((i: any) => i.id !== itemId);
+    
+    const newChecklist = { ...activeWorkspace.checklist };
+    delete newChecklist[itemId];
+
+    await supabase.from('investigation_workspaces')
+      .update({ checklist_items: newItems, checklist: newChecklist })
+      .eq('id', activeWorkspace.id);
+      
+    setActiveWorkspace(prev => ({ ...prev, checklist_items: newItems, checklist: newChecklist }));
+  };
+
   const handleGenerateWorkspaceReport = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    const keyFindings = workspaceData.notes
+    const keyFindings = (workspaceData.notes || [])
       .filter((n: any) => n.is_key_finding)
       .map((n: any) => n.note);
     
-    const allNotes = workspaceData.notes.map((n: any) => n.note);
+    const allNotes = (workspaceData.notes || []).map((n: any) => n.note);
     
-    const evidenceSummary = workspaceData.evidence.map((e: any) => 
+    const evidenceSummary = (workspaceData.evidence || []).map((e: any) => 
       `${e.evidence_type}: ${e.title} — ${e.description} (Confidence: ${e.confidence})`
     );
     
-    const threatIntelSummary = workspaceData.threatIntel.map((t: any) =>
+    const threatIntelSummary = (workspaceData.threatIntel || []).map((t: any) =>
       `IP ${t.ip}: AbuseIPDB ${t.abuseipdb_score}/100, VT ${t.vt_malicious} malicious, Verdict: ${t.final_verdict}`
     );
 
     const prompt = `You are a senior SOC analyst writing a professional incident report.
     
-INCIDENT:
-Title: ${activeWorkspaceEsc.title}
-Severity: ${activeWorkspaceEsc.severity}
-Priority: ${activeWorkspaceEsc.priority}
-Alert: ${workspaceData.linkedAlert?.description}
-Agent: ${workspaceData.linkedAlert?.agent_name}
-Source IP: ${workspaceData.linkedAlert?.source_ip}
-Rule ID: ${workspaceData.linkedAlert?.rule_id}
-Timestamp: ${workspaceData.linkedAlert?.timestamp}
+INVESTIGATION WORKSPACE FINDINGS:
 
-ANALYST KEY FINDINGS:
-${keyFindings.join('\n') || 'None marked as key findings'}
+LINKED ALERT:
+${JSON.stringify(workspaceData.linkedAlert, null, 2)}
+
+ANALYST KEY FINDINGS (${(workspaceData.notes || []).filter((n: any) => n.is_key_finding).length}):
+${(workspaceData.notes || []).filter((n: any) => n.is_key_finding).map((n: any) => '- ' + n.note).join('\n') || 'None'}
 
 ALL INVESTIGATION NOTES:
-${allNotes.join('\n') || 'No notes added'}
+${(workspaceData.notes || []).map((n: any) => '- ' + n.note).join('\n') || 'None'}
 
-EVIDENCE COLLECTED:
-${evidenceSummary.join('\n') || 'No evidence collected'}
+EVIDENCE COLLECTED (${(workspaceData.evidence || []).length} items):
+${(workspaceData.evidence || []).map((e: any) => `- [${e.confidence} confidence] ${e.title}: ${e.description}`).join('\n') || 'None'}
 
 THREAT INTELLIGENCE:
-${threatIntelSummary.join('\n') || 'No threat intel run'}
+${(workspaceData.threatIntel || []).map((t: any) => `IP ${t.ip}: Score ${t.combined_score}/100 — ${t.final_verdict} — Country: ${t.abuseipdb_country}`).join('\n') || 'Not checked'}
+
+CORRELATED ALERTS: ${workspaceData.correlatedData?.alerts?.length || 0} related alerts found with same rule
+SIMILAR PAST CASES: ${workspaceData.similarCases?.length || 0} similar cases — ${(workspaceData.similarCases || []).filter((c: any) => c.verdict === 'False Positive').length || 0} previously False Positive
+
+CHECKLIST COMPLETION: ${Object.values(activeWorkspace.checklist || {}).filter(Boolean).length}/8 items complete
 
 Based on this analyst investigation, generate a detailed professional incident report in JSON format. Use the analyst findings to enhance and ground the report in real evidence.
-
+    
 Return ONLY valid JSON matching this structure:
 {
   executive_summary: string,
@@ -3565,7 +3828,9 @@ Return ONLY valid JSON matching this structure:
                                       >
                                         <div className="flex items-center gap-3">
                                           <Search className="w-4 h-4" />
-                                          <span className="text-[11px] font-bold uppercase tracking-widest">Create Case & Investigate</span>
+                                          <span className="text-[11px] font-bold uppercase tracking-widest">
+                                            {activeWorkspaces[esc.id] ? "View Investigation" : "Create Case & Investigate"}
+                                          </span>
                                         </div>
                                         <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-all" />
                                       </button>
@@ -3669,6 +3934,8 @@ Return ONLY valid JSON matching this structure:
             onToggleKeyFinding={handleToggleKeyFinding}
             onAddEvidence={handleAddEvidence}
             onChecklistUpdate={handleChecklist}
+            onAddChecklistItem={handleAddChecklistItem}
+            onRemoveChecklistItem={handleRemoveChecklistItem}
             onGenerateReport={handleGenerateWorkspaceReport}
             onBlockIP={handleBlockIP}
             onAddCurrentFindingsAsEvidence={handleAddCurrentFindingsAsEvidence}
@@ -3679,89 +3946,121 @@ Return ONLY valid JSON matching this structure:
 
       <AnimatePresence>
         {showVerdictModal && activeWorkspace && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
             <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              className="bg-neutral-900 border border-neutral-800 rounded-[2.5rem] w-full max-w-xl overflow-hidden shadow-2xl relative"
+              className="bg-[#0a0a0a] border border-neutral-800 rounded-[2rem] w-full max-w-lg overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.6)] relative"
             >
-              <div className="p-8 border-b border-neutral-800 flex items-center justify-between bg-neutral-900/50">
+              <div className="p-6 border-b border-neutral-800/80 flex items-center justify-between bg-black/20">
                 <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-                    <CheckCircle2 className="w-7 h-7 text-emerald-500" />
+                  <div className="w-10 h-10 rounded-xl bg-neutral-900 flex items-center justify-center border border-neutral-800">
+                    <ShieldAlert className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-black text-white uppercase tracking-widest">Set Investigation Verdict</h3>
-                    <p className="text-[11px] text-neutral-500 font-bold uppercase tracking-widest mt-1">Final closure for IR-{activeWorkspaceEsc?.escalation_id}</p>
+                    <h3 className="text-[13px] font-black text-white uppercase tracking-widest">Resolution Verdict</h3>
+                    <p className="text-[9px] text-neutral-500 font-bold uppercase tracking-widest mt-0.5">IR-{activeWorkspaceEsc?.escalation_id}</p>
                   </div>
                 </div>
-                <button onClick={() => setShowVerdictModal(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
-                  <X className="w-7 h-7 text-neutral-500" />
+                <button 
+                  onClick={() => {
+                    setShowVerdictModal(false);
+                    setSelectedVerdictId(null);
+                  }} 
+                  className="w-8 h-8 flex items-center justify-center hover:bg-white/5 rounded-lg transition-all"
+                >
+                  <X className="w-4 h-4 text-neutral-500" />
                 </button>
               </div>
 
-              <div className="p-10 space-y-10">
-                <div className="grid grid-cols-2 gap-4">
+              <div className="p-6 space-y-8">
+                {/* Compact Grid */}
+                <div className="grid grid-cols-1 gap-4">
                   {[
-                    { id: 'True Positive', label: 'True Positive', color: 'bg-red-600 hover:bg-red-500 shadow-red-600/20' },
-                    { id: 'False Positive', label: 'False Positive', color: 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20' },
-                    { id: 'Benign', label: 'Benign', color: 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20' },
-                    { id: 'Needs Escalation', label: 'Needs Escalation', color: 'bg-yellow-600 hover:bg-yellow-500 shadow-yellow-600/20' }
+                    { id: 'True Positive', label: 'True Positive', icon: ShieldAlert, activeClass: 'bg-[#ff3b3b] text-white border-[#ff3b3b] shadow-[0_8px_25px_rgba(255,59,59,0.3)] scale-[1.02]', baseClass: 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:border-red-500/30' },
+                    { id: 'False Positive', label: 'False Positive', icon: ShieldCheck, activeClass: 'bg-[#10b981] text-white border-[#10b981] shadow-[0_8px_25px_rgba(16,185,129,0.3)] scale-[1.02]', baseClass: 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:border-emerald-500/30' },
+                    { id: 'Benign', label: 'Benign', icon: Shield, activeClass: 'bg-[#3b82f6] text-white border-[#3b82f6] shadow-[0_8px_25px_rgba(59,130,246,0.3)] scale-[1.02]', baseClass: 'bg-neutral-900 border-neutral-800 text-neutral-500 hover:border-blue-500/30' },
                   ].map(v => (
                     <button 
                       key={v.id}
-                      onClick={() => handleWorkspaceVerdict(v.id, verdictReason, verdictConfidence)}
-                      disabled={!verdictReason.trim()}
+                      onClick={() => setSelectedVerdictId(v.id)}
                       className={cn(
-                        "py-5 rounded-2xl text-[12px] font-black uppercase tracking-[0.2em] transition-all shadow-xl disabled:opacity-30 disabled:cursor-not-allowed",
-                        v.color
+                        "group relative flex items-center gap-4 px-6 py-4 rounded-[1.25rem] border transition-all duration-300 w-full",
+                        selectedVerdictId === v.id 
+                          ? v.activeClass
+                          : v.baseClass
                       )}
                     >
-                      {v.label}
+                       <div className={cn(
+                         "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border transition-all",
+                         selectedVerdictId === v.id 
+                          ? "bg-white/20 border-white/40" 
+                          : "bg-black/40 border-neutral-800 group-hover:border-neutral-700"
+                       )}>
+                          {selectedVerdictId === v.id ? (
+                            <Check className="w-5 h-5 text-white" />
+                          ) : (
+                            <v.icon className="w-5 h-5 opacity-40 group-hover:opacity-100" />
+                          )}
+                       </div>
+                       <span className="text-[13px] font-black uppercase tracking-[0.1em]">{v.label}</span>
+                       
+                       {selectedVerdictId === v.id && (
+                         <div className="absolute right-6 opacity-40">
+                            <motion.div initial={{ x: -5 }} animate={{ x: 0 }}>
+                              <CheckCircle2 className="w-5 h-5" />
+                            </motion.div>
+                         </div>
+                       )}
                     </button>
                   ))}
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">Closing Reason / Notes</label>
-                  <textarea 
-                    value={verdictReason}
-                    onChange={(e) => setVerdictReason(e.target.value)}
-                    placeholder="Provide a final summary of findings..."
-                    className="w-full bg-black border border-neutral-800 rounded-3xl px-6 py-5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-all h-32 resize-none leading-relaxed"
-                  />
-                </div>
-
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-                    <span className="text-neutral-500">Verdict Confidence</span>
-                    <span className="text-emerald-400">{verdictConfidence}%</span>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-black text-neutral-600 uppercase tracking-widest">Justification</label>
+                    <textarea 
+                      value={verdictReason}
+                      onChange={(e) => setVerdictReason(e.target.value)}
+                      placeholder="Conclusion logic..."
+                      className="w-full bg-neutral-900/30 border border-neutral-800 rounded-xl px-4 py-3 text-[12px] text-neutral-300 focus:outline-none focus:border-neutral-700 transition-all h-24 resize-none leading-relaxed font-medium"
+                    />
                   </div>
-                  <input 
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={verdictConfidence}
-                    onChange={(e) => setVerdictConfidence(parseInt(e.target.value))}
-                    className="w-full h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                  />
-                  <div className="flex justify-between text-[8px] font-bold text-neutral-700 uppercase tracking-widest">
-                    <span>Low</span>
-                    <span>High Assurance</span>
+
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center text-[9px] font-black text-neutral-600 uppercase tracking-widest">
+                       <span>Confidence</span>
+                       <span className="text-white">{verdictConfidence}%</span>
+                    </div>
+                    <input 
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={verdictConfidence}
+                      onChange={(e) => setVerdictConfidence(parseInt(e.target.value))}
+                      className="w-full h-1 bg-neutral-800 rounded-full appearance-none cursor-pointer accent-white"
+                    />
                   </div>
                 </div>
 
-                <div className="pt-4 flex items-center gap-6 px-6 py-4 bg-white/[0.02] border border-neutral-800 rounded-3xl">
-                   <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-bold text-neutral-500 uppercase">Evidence:</span>
-                      <span className="text-[11px] font-black text-white">{workspaceData.evidence.length} Items</span>
-                   </div>
-                   <div className="w-[1px] h-4 bg-neutral-800" />
-                   <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-bold text-neutral-500 uppercase">Notes:</span>
-                      <span className="text-[11px] font-black text-white">{workspaceData.notes.length} Recorded</span>
-                   </div>
-                </div>
+                <button
+                  disabled={!selectedVerdictId || !verdictReason.trim()}
+                  onClick={() => {
+                    if (selectedVerdictId) {
+                      handleWorkspaceVerdict(selectedVerdictId, verdictReason, verdictConfidence);
+                      setSelectedVerdictId(null);
+                    }
+                  }}
+                  className={cn(
+                    "w-full py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-300 border flex items-center justify-center gap-3",
+                    selectedVerdictId && verdictReason.trim()
+                      ? "bg-white text-black border-white shadow-[0_10px_20px_rgba(255,255,255,0.05)] hover:scale-[1.01]"
+                      : "bg-neutral-800/50 text-neutral-600 border-neutral-800 cursor-not-allowed opacity-30"
+                  )}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Finalize Resolution
+                </button>
               </div>
             </motion.div>
           </div>

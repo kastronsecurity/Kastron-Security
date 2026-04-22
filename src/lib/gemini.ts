@@ -1,3 +1,4 @@
+import { GoogleGenAI } from "@google/genai";
 import { supabase } from "./supabase";
 
 export interface SOCReportParams {
@@ -7,29 +8,64 @@ export interface SOCReportParams {
   analystName?: string;
 }
 
-async function callGeminiProxy(prompt: string, options: { systemInstruction?: string, ip?: string } = {}) {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error("Authentication required for AI analysis");
+// Lazy initializer for Gemini SDK
+let aiInstance: GoogleGenAI | null = null;
 
-  const response = await fetch("/api/gemini-analysis", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${session.access_token}`
-    },
-    body: JSON.stringify({
-      prompt,
-      systemInstruction: options.systemInstruction,
-      ip: options.ip
-    })
-  });
-
-  if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || "AI Analysis failed");
+const getAI = () => {
+  if (!aiInstance) {
+    // In our environment, process.env.GEMINI_API_KEY is the standard way to access the key
+    // But in client-side Vite, we prefer import.meta.env
+    let apiKey = '';
+    try {
+      // @ts-ignore
+      apiKey = (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
+               (import.meta.env?.VITE_GEMINI_API_KEY) || 
+               (import.meta.env?.GEMINI_API_KEY) || 
+               '';
+    } catch (e) {
+      // fallback
+    }
+    
+    if (!apiKey) {
+      console.warn("GEMINI_API_KEY not found in environment. AI features will fail.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey: apiKey || "" });
   }
+  return aiInstance;
+};
 
-  return await response.json();
+async function callGemini(prompt: string, options: { systemInstruction?: string } = {}) {
+  const ai = getAI();
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview", // Optimal for SOC tasks
+      contents: prompt,
+      config: {
+        systemInstruction: options.systemInstruction || "You are a senior SOC analyst for KastronSec.",
+        responseMimeType: "application/json"
+      }
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error("Empty response from Gemini AI");
+    }
+
+    // Return parsed JSON if possible
+    try {
+      return JSON.parse(text.replace(/```json|```/g, "").trim());
+    } catch (e) {
+      return text;
+    }
+  } catch (error: any) {
+    console.error("Gemini SDK Error:", error);
+    // Graceful fallback for missing API key or other SDK errors
+    if (error?.message?.includes("API key")) {
+      throw new Error("AI features require a GEMINI_API_KEY. Please configure it in Settings.");
+    }
+    throw error;
+  }
 }
 
 export async function generateStructuredSOCReport(params: SOCReportParams): Promise<any> {
@@ -136,25 +172,16 @@ Return ONLY the JSON object.`;
   }
 
   try {
-    // SECURITY: Use the proxy instead of client-side SDK
-    const fullPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
-    return await callGeminiProxy(fullPrompt);
+    return await callGemini(prompt, { systemInstruction });
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    console.error("Gemini Report Error:", error);
     throw error;
   }
 }
 
 export async function generateAINarrative(prompt: string, systemInstruction?: string): Promise<any> {
   try {
-    const fullPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
-    const result = await callGeminiProxy(fullPrompt);
-    
-    // Fallback parsing if proxy returns a string or object
-    if (typeof result === 'string') {
-      return JSON.parse(result.replace(/```json|```/g, '').trim());
-    }
-    return result;
+    return await callGemini(prompt, { systemInstruction });
   } catch (error) {
     console.error("AI Narrative Error:", error);
     throw error;

@@ -35,7 +35,8 @@ import {
   Monitor,
   Shield,
   Code,
-  User
+  User,
+  Radar
 } from 'lucide-react';
 import { 
   PieChart, 
@@ -61,6 +62,7 @@ import OnboardingPage from './components/onboarding/OnboardingPage';
 import MarketingPage from './components/marketing/MarketingPage';
 import ReportsPage from './components/reports/ReportsPage';
 import EscalationsPage from './components/escalations/EscalationsPage';
+import EntitiesPage from './components/entities/EntitiesPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { supabase } from './lib/supabase';
 import { useClient } from './contexts/ClientContext';
@@ -424,7 +426,10 @@ export default function App() {
     if (showAuth) {
       return (
         <LandingPage 
-          onLogin={() => {}} 
+          onLogin={() => {
+            setShowAuth(false);
+            refreshClient();
+          }} 
           initialMode={authMode}
           onBack={() => setShowAuth(false)}
         />
@@ -553,7 +558,7 @@ export default function App() {
                 }}
               />
               <SidebarItem 
-                icon={Users} 
+                icon={Radar} 
                 label="Entities" 
                 active={currentPage === 'entities'}
                 disabled={!hasData}
@@ -1072,13 +1077,14 @@ export default function App() {
             <CustomRulesPage key="rules" />
           ) : currentPage === 'reports' ? (
             <ReportsPage key="reports" user={user} />
+          ) : currentPage === 'entities' ? (
+            <EntitiesPage key="entities" />
           ) : currentPage === 'settings' ? (
             <SettingsPage key="settings" />
           ) : (
             <UnderConstruction 
               key={currentPage} 
               title={
-                currentPage === 'entities' ? 'Entities' :
                 currentPage === 'timeline' ? 'Attack Timeline' :
                 currentPage === 'user-cog' ? 'User Management' :
                 currentPage === 'integrations' ? 'Integrations' :

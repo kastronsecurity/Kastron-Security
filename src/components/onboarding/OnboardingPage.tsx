@@ -322,7 +322,7 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
         <div className="flex items-center justify-between mb-12">
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-2 text-neutral-500 hover:text-white transition-all text-[11px] font-bold uppercase tracking-widest group px-3 py-1.5 rounded-full hover:bg-white/5"
+            className="flex items-center gap-2 text-blue-500 hover:text-blue-400 transition-all text-[11px] font-bold uppercase tracking-widest group px-4 py-2 rounded-lg bg-blue-500/5 border border-blue-500/10 hover:border-blue-500/20"
           >
             <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
             Back to Login
@@ -643,37 +643,26 @@ const OnboardingPage: React.FC<OnboardingPageProps> = ({ user, onComplete }) => 
                             <div className="space-y-4 text-[13px] text-neutral-400 font-medium leading-relaxed">
                               {firewallConfig.brand === 'pfSense' && (
                                 <ol className="list-decimal list-inside space-y-2">
-                                  <li>Access your <b>pfSense Web Dashboard</b> at <code>https://{firewallConfig.ip}</code></li>
-                                  <li>Navigate to <b>Status &gt; System Logs &gt; Settings</b></li>
-                                  <li>Scroll to <b>Remote Logging Options</b></li>
-                                  <li>Check <b>Send log messages to remote syslog server</b></li>
-                                  <li>Select <b>WAN</b> as Source Address</li>
-                                  <li>Add <code>{WAZUH_IP}:514</code> to IP Addresses</li>
-                                  <li>Check <b>Everything</b> or specific logs under Remote Syslog Contents</li>
-                                  <li>Click <b>Save</b> at the bottom</li>
+                                  <li>Access your <b>pfSense Dashboard</b> and then navigate to <b>Status &gt; System Logs &gt; Settings</b></li>
+                                  <li>Scroll to <b>Remote Logging Options</b> and enable <b>Send log messages to remote syslog server</b></li>
+                                  <li>Under <b>Remote Syslog Contents</b>, check <b>Everything</b></li>
+                                  <li>In <b>Remote Syslog Servers</b>, enter <code>{WAZUH_IP}:514</code> and click <b>Save</b></li>
                                 </ol>
                               )}
                               {firewallConfig.brand === 'FortiGate' && (
                                 <ol className="list-decimal list-inside space-y-2">
-                                  <li>Log in to your <b>FortiGate Web UI</b> at <code>https://{firewallConfig.ip}</code></li>
-                                  <li>Go to <b>Log & Report &gt; Log Settings</b></li>
-                                  <li>Enable <b>Send Logs to Syslog</b></li>
-                                  <li>Enter IP Address: <code>{WAZUH_IP}</code></li>
-                                  <li>Set Port: <code>514</code></li>
-                                  <li>Set Reliable Logging: <b>No (UDP)</b></li>
-                                  <li>Apply changes</li>
+                                  <li>Log in to your <b>FortiGate Dashboard</b> and go to <b>Log & Report &gt; Log Settings</b></li>
+                                  <li>Enable <b>Send Logs to Syslog</b> and enter IP: <code>{WAZUH_IP}</code></li>
+                                  <li>Set Port to <code>514</code> and Protocol to <b>UDP</b></li>
+                                  <li>Click <b>Apply</b> to save the settings</li>
                                 </ol>
                               )}
                               {firewallConfig.brand === 'OPNsense' && (
                                 <ol className="list-decimal list-inside space-y-2">
-                                  <li>Access your <b>OPNsense Dashboard</b> at <code>https://{firewallConfig.ip}</code></li>
-                                  <li>Navigate to <b>System &gt; Logging &gt; Targets</b></li>
-                                  <li>Click the <b>+ (Plus)</b> icon to add a new target</li>
-                                  <li>Set Transport to <b>UDP (4)</b></li>
-                                  <li>Set Hostname to <code>{WAZUH_IP}</code></li>
-                                  <li>Set Port to <code>514</code></li>
-                                  <li>Select the log types you wish to forward (e.g., Firewall, System)</li>
-                                  <li>Click <b>Save</b> and <b>Apply Changes</b></li>
+                                  <li>Access your <b>OPNsense Dashboard</b> and navigate to <b>System &gt; Logging &gt; Targets</b></li>
+                                  <li>Click <b>+ (Plus)</b> to add a new target, set Transport to <b>UDP (4)</b></li>
+                                  <li>Set Hostname to <code>{WAZUH_IP}</code> and Port to <code>514</code></li>
+                                  <li>Select log types to forward, then <b>Save</b> and <b>Apply Changes</b></li>
                                 </ol>
                               )}
                               {(!['pfSense', 'FortiGate', 'OPNsense'].includes(firewallConfig.brand)) && (

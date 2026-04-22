@@ -90,3 +90,56 @@ CREATE POLICY "Authenticated users can view threat intel" ON threat_intel_cache
   FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Authenticated users can insert threat intel" ON threat_intel_cache
   FOR INSERT TO authenticated WITH CHECK (true);
+
+-- 4. Investigation Workspace Tables
+CREATE TABLE IF NOT EXISTS investigation_workspaces (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  escalation_id uuid REFERENCES escalations(id),
+  case_id uuid REFERENCES cases(id),
+  client_id uuid REFERENCES clients(id),
+  opened_by text,
+  status text DEFAULT 'active',
+  checklist jsonb DEFAULT '{}',
+  checklist_items jsonb DEFAULT '[]',
+  ai_narrative jsonb DEFAULT '{}',
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS investigation_notes (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  workspace_id uuid REFERENCES investigation_workspaces(id),
+  escalation_id uuid REFERENCES escalations(id),
+  client_id uuid REFERENCES clients(id),
+  note text NOT NULL,
+  is_key_finding boolean DEFAULT false,
+  added_by text,
+  created_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS investigation_evidence (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  workspace_id uuid REFERENCES investigation_workspaces(id),
+  escalation_id uuid REFERENCES escalations(id),
+  client_id uuid REFERENCES clients(id),
+  evidence_type text,
+  title text,
+  description text,
+  data jsonb DEFAULT '{}',
+  source text,
+  confidence text,
+  added_by text,
+  created_at timestamp with time zone DEFAULT now()
+);
+
+-- RLS for Investigation Tables
+ALTER TABLE investigation_workspaces ENABLE ROW LEVEL SECURITY;
+ALTER TABLE investigation_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE investigation_evidence ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own investigation_workspaces" ON investigation_workspaces
+  FOR ALL USING (client_id = get_my_client_id());
+CREATE POLICY "Users can manage own investigation_notes" ON investigation_notes
+  FOR ALL USING (client_id = get_my_client_id());
+CREATE POLICY "Users can manage own investigation_evidence" ON investigation_evidence
+  FOR ALL USING (client_id = get_my_client_id());
