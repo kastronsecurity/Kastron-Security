@@ -154,7 +154,27 @@ export const InvestigationWorkspace: React.FC<WorkspaceProps> = ({
       ? (() => { try { return JSON.parse(alert.raw_log) } catch { return null } })()
       : alert.raw_log;
       
-    return raw?.data?.srcip || raw?.data?.src_ip || raw?.srcip || raw?.src_ip || 'N/A';
+    if (!raw) return 'N/A';
+
+    // Deep search for source IP patterns
+    const findIP = (obj: any): string | null => {
+      if (!obj || typeof obj !== 'object') return null;
+      
+      // Common Wazuh/Security fields
+      const candidates = [
+        obj.srcip, obj.src_ip, obj.source_ip, 
+        obj.data?.srcip, obj.data?.src_ip, obj.data?.source_ip,
+        obj.origin?.ip, obj.client?.ip
+      ];
+      
+      for (const val of candidates) {
+        if (typeof val === 'string' && val !== 'N/A' && val.includes('.')) return val;
+      }
+      
+      return null;
+    };
+
+    return findIP(raw) || 'N/A';
   };
 
   const fetchIncidentTimeline = async (linkedAlert: any) => {
@@ -269,6 +289,15 @@ export const InvestigationWorkspace: React.FC<WorkspaceProps> = ({
           'Authorization': `Bearer ${session?.access_token}`
         }
       });
+      
+      if (!response.ok) {
+        const text = await response.text();
+        if (response.status === 404 && text.includes('<!DOCTYPE')) {
+          throw new Error("Backend API not found. This application requires a full-stack environment (like Cloud Run) to run the threat intelligence server. Netlify only supports static files.");
+        }
+        throw new Error(`Intelligence server error (${response.status})`);
+      }
+      
       const result = await response.json();
       setIocSearchResult({ ...result, ioc: iocInput.trim() });
       if (result.reputation === 'Malicious') {
@@ -498,7 +527,7 @@ export const InvestigationWorkspace: React.FC<WorkspaceProps> = ({
 Alert: ${data.linkedAlert.description}
 Severity: ${data.linkedAlert.severity}
 Agent: ${data.linkedAlert.agent_name}
-Source IP: ${data.linkedAlert.source_ip || 'Unknown'}
+Source IP: ${getSourceIp(data.linkedAlert)}
 Time: ${data.linkedAlert.timestamp}
 Related events in timeline: ${timelineCount}
 Threat intel: ${hasThreatIntel && data.threatIntel[0] ? data.threatIntel[0].final_verdict + ' (score: ' + data.threatIntel[0].combined_score + '/100)' : 'Not checked'}
@@ -1817,7 +1846,7 @@ Respond with ONLY a JSON object:
                            {[
                               { label: 'Timestamp', value: new Date(selectedAlertDetail.timestamp).toLocaleString() },
                               { label: 'Agent', value: selectedAlertDetail.agent_name },
-                              { label: 'Source IP', value: selectedAlertDetail.source_ip || 'N/A' },
+                              { label: 'Source IP', value: getSourceIp(selectedAlertDetail) },
                               { label: 'Rule ID', value: selectedAlertDetail.rule_id },
                               { label: 'Status', value: selectedAlertDetail.status || 'Active' },
                            ].map((row, i) => (
@@ -2321,7 +2350,7 @@ Respond with ONLY a JSON object:
                   { label: 'Agent', value: selectedTimelineAlert.agent_name },
                   { label: 'Rule ID', value: selectedTimelineAlert.rule_id },
                   { label: 'Rule Level', value: selectedTimelineAlert.rule_level },
-                  { label: 'Source IP', value: selectedTimelineAlert.source_ip !== 'N/A' ? selectedTimelineAlert.source_ip : 'Internal' },
+                  { label: 'Source IP', value: getSourceIp(selectedTimelineAlert) },
                   { label: 'Status', value: selectedTimelineAlert.status },
                 ].filter(f => f.value).map(field => (
                   <div key={field.label} className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
@@ -2963,7 +2992,7 @@ Respond with ONLY a JSON object:
                         <div className="grid grid-cols-2 gap-4">
                           {[
                             { label: 'Rule ID', value: selectedGlobalAlert.rule_id, icon: Terminal },
-                            { label: 'Source IP', value: selectedGlobalAlert.source_ip, icon: Globe },
+                            { label: 'Source IP', value: getSourceIp(selectedGlobalAlert), icon: Globe },
                             { label: 'Agent', value: selectedGlobalAlert.agent_name, icon: Cpu },
                             { label: 'Timestamp', value: new Date(selectedGlobalAlert.timestamp).toLocaleString(), icon: Clock },
                           ].map((item, i) => (

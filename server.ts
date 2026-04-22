@@ -44,6 +44,11 @@ async function startServer() {
   app.use(express.json());
   app.use(cors());
 
+  // Public ping route to keep the server awake on free tiers (like Render)
+  app.get("/ping", (req, res) => {
+    res.send("pong");
+  });
+
   // Rate Limiting
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
