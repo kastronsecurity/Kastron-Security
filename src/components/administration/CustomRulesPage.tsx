@@ -38,7 +38,6 @@ interface CustomRule {
   mitre_technique: string | null;
   status: string;
   deployed: boolean;
-  approval_status?: string;
   created_at: string;
   updated_at: string;
 }
@@ -158,8 +157,8 @@ export default function CustomRulesPage() {
 
     try {
       if (selectedRule) {
-        // Update existing rule - trigger new approval request
-        const { data: updatedRule, error: updateError } = await supabase
+        // Update existing rule
+        const { error } = await supabase
           .from('custom_rules')
           .update({
             name: formData.name,
@@ -172,34 +171,11 @@ export default function CustomRulesPage() {
             mitre_tactic: formData.mitre_tactic || null,
             mitre_technique: formData.mitre_technique || null,
             deployed: false,
-            approval_status: 'pending',
-            status: 'inactive', // Inactive while pending
             updated_at: new Date().toISOString()
           })
-          .eq('id', selectedRule.id)
-          .select()
-          .single();
+          .eq('id', selectedRule.id);
 
-        if (updateError) throw updateError;
-
-        // Create approval request for updated rule
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from('rule_approval_requests').insert({
-          client_id: currentClient.id,
-          custom_rule_id: selectedRule.id,
-          rule_id: selectedRule.rule_id,
-          rule_name: formData.name,
-          description: formData.description,
-          level: formData.level,
-          match_pattern: formData.match_pattern || null,
-          regex_pattern: formData.regex_pattern || null,
-          log_source: formData.log_source,
-          mitre_id: formData.mitre_id || null,
-          mitre_tactic: formData.mitre_tactic || null,
-          mitre_technique: formData.mitre_technique || null,
-          status: 'pending',
-          submitted_by: user?.email
-        });
+        if (error) throw error;
       } else {
         // Create new rule
         const { data: existingRules, error: fetchError } = await supabase
@@ -214,7 +190,7 @@ export default function CustomRulesPage() {
         const lastRuleId = existingRules?.[0]?.rule_id ?? baseRuleId;
         const nextRuleId = lastRuleId + 1;
 
-        const { data: newRule, error: insertError } = await supabase
+        const { error } = await supabase
           .from('custom_rules')
           .insert({
             client_id: currentClient.id,
@@ -228,33 +204,11 @@ export default function CustomRulesPage() {
             mitre_id: formData.mitre_id || null,
             mitre_tactic: formData.mitre_tactic || null,
             mitre_technique: formData.mitre_technique || null,
-            status: 'inactive',
-            deployed: false,
-            approval_status: 'pending'
-          })
-          .select()
-          .single();
+            status: 'active',
+            deployed: false
+          });
 
-        if (insertError) throw insertError;
-
-        // Create approval request for new rule
-        const { data: { user } } = await supabase.auth.getUser();
-        await supabase.from('rule_approval_requests').insert({
-          client_id: currentClient.id,
-          custom_rule_id: newRule.id,
-          rule_id: nextRuleId,
-          rule_name: formData.name,
-          description: formData.description,
-          level: formData.level,
-          match_pattern: formData.match_pattern || null,
-          regex_pattern: formData.regex_pattern || null,
-          log_source: formData.log_source,
-          mitre_id: formData.mitre_id || null,
-          mitre_tactic: formData.mitre_tactic || null,
-          mitre_technique: formData.mitre_technique || null,
-          status: 'pending',
-          submitted_by: user?.email
-        });
+        if (error) throw error;
       }
 
       setIsModalOpen(false);
@@ -432,25 +386,10 @@ export default function CustomRulesPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      {rule.approval_status === 'rejected' ? (
-                        <div className="flex items-center gap-1.5 text-red-500 cursor-help" title="Rule rejected by admin. Review and edit to re-submit.">
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          <span className="text-[10px] font-bold uppercase">Rejected</span>
-                        </div>
-                      ) : rule.approval_status === 'pending' ? (
-                        <div className="flex items-center gap-1.5 text-yellow-500">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span className="text-[10px] font-bold uppercase">Review</span>
-                        </div>
-                      ) : rule.deployed ? (
+                      {rule.deployed ? (
                         <div className="flex items-center gap-1.5 text-green-500">
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span className="text-[10px] font-bold uppercase">Live</span>
-                        </div>
-                      ) : rule.approval_status === 'approved' ? (
-                        <div className="flex items-center gap-1.5 text-blue-500">
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          <span className="text-[10px] font-bold uppercase">Deploying</span>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-orange-500">

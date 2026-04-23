@@ -65,7 +65,6 @@ import EscalationsPage from './components/escalations/EscalationsPage';
 import EntitiesPage from './components/entities/EntitiesPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import MFALogin from './components/auth/MFALogin';
-import AdminPortal from './components/admin/AdminPortal';
 import { supabase } from './lib/supabase';
 import { useClient } from './contexts/ClientContext';
 import logo from './assets/logo.png';
@@ -150,9 +149,19 @@ const UnderConstruction = ({ title }: { title: string }) => (
 );
 
 export default function App() {
-  const { currentClient, user, loading: clientLoading, authLoading, isAdmin, mfaRequired, mfaLoading, refreshClient, agentCount, alertCount, onboardingCompleted } = useClient();
+  const { currentClient, user, loading: clientLoading, authLoading, mfaRequired, mfaLoading, refreshClient, agentCount, alertCount, onboardingCompleted } = useClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'alerts' | 'escalations' | 'cases' | 'onboarding' | 'agents' | 'rules' | 'entities' | 'timeline' | 'reports' | 'user-cog' | 'integrations' | 'audit' | 'settings' | 'api-logs' | 'support'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'alerts' | 'escalations' | 'cases' | 'onboarding' | 'agents' | 'rules' | 'entities' | 'timeline' | 'reports' | 'user-cog' | 'integrations' | 'audit' | 'settings' | 'api-logs' | 'support'>(() => {
+    const saved = window.sessionStorage.getItem('kastron_current_page');
+    // Ensure the saved page is a valid type or default to dashboard
+    return (saved as any) || 'dashboard';
+  });
+
+  useEffect(() => {
+    if (currentPage) {
+      window.sessionStorage.setItem('kastron_current_page', currentPage);
+    }
+  }, [currentPage]);
   
   const hasData = agentCount > 0 || alertCount > 0;
 
@@ -160,27 +169,20 @@ export default function App() {
   useEffect(() => {
     if (authLoading || clientLoading) return;
 
-    // Admin redirection check
-    if (user && isAdmin) {
-      if (currentPage !== 'admin' as any) {
-        setCurrentPage('admin' as any);
-      }
-      return;
-    }
-
     const isManualNav = window.sessionStorage.getItem('manual_nav') === 'true';
+    const isAddingAgent = window.sessionStorage.getItem('kastron_is_adding_agent') === 'true';
 
     if (onboardingCompleted && !hasData) {
       // Only force to agents if they are on dashboard and have no data
       // This prevents flickering redirects when data is being updated in the background
-      if (currentPage === 'dashboard' && !isManualNav) {
+      if (currentPage === 'dashboard' && !isManualNav && !isAddingAgent) {
         setCurrentPage('agents');
       }
-    } else if (onboardingCompleted && hasData && currentPage === 'agents' && !isManualNav) {
+    } else if (onboardingCompleted && hasData && currentPage === 'agents' && !isManualNav && !isAddingAgent) {
       // Only auto-redirect to dashboard if they were on agents page because of no data
       setCurrentPage('dashboard');
     }
-  }, [hasData, onboardingCompleted, authLoading, clientLoading]);
+  }, [hasData, onboardingCompleted, authLoading, clientLoading, currentPage]);
   const [latestAlerts, setLatestAlerts] = useState<any[]>([]);
   const [alertOverviewData, setAlertOverviewData] = useState([
     { name: 'Critical', value: 0, color: '#ef4444' },
@@ -421,12 +423,25 @@ export default function App() {
     }
   };
 
-  if (authLoading || mfaLoading) {
+  if (authLoading || (clientLoading && !currentClient) || mfaLoading) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
           <span className="text-neutral-500 text-xs font-bold uppercase tracking-widest animate-pulse">Initializing SOC...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && mfaRequired) {
+    return (
+      <div className="h-screen bg-black flex items-center justify-center p-8">
+        <div className="w-full max-w-md">
+          <MFALogin 
+            onSuccess={() => refreshClient()} 
+            onCancel={() => supabase.auth.signOut()} 
+          />
         </div>
       </div>
     );
@@ -456,35 +471,6 @@ export default function App() {
           setShowAuth(true);
         }}
       />
-    );
-  }
-
-  if (mfaRequired) {
-    return (
-      <div className="h-screen bg-black flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          <MFALogin 
-            onSuccess={() => refreshClient()} 
-            onCancel={() => supabase.auth.signOut()} 
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // Admin Portal check - Render separately from client layout
-  if (isAdmin) {
-    return <AdminPortal />;
-  }
-
-  if (clientLoading && !currentClient) {
-    return (
-      <div className="h-screen bg-black flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
-          <span className="text-neutral-500 text-xs font-bold uppercase tracking-widest animate-pulse">Syncing Environment...</span>
-        </div>
-      </div>
     );
   }
 

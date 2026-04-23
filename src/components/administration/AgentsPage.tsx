@@ -41,7 +41,22 @@ export default function AgentsPage({ user }: { user: any }) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAddingAgent, setIsAddingAgent] = useState(false);
+  const [isAddingAgent, setIsAddingAgent] = useState(() => {
+    const saved = sessionStorage.getItem('kastron_is_adding_agent');
+    return saved === 'true';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('kastron_is_adding_agent', isAddingAgent.toString());
+  }, [isAddingAgent]);
+
+  const [showSecurityGate, setShowSecurityGate] = useState(false);
+  const [securityStep, setSecurityStep] = useState<'password' | 'mfa'>('password');
+  const [gatePassword, setGatePassword] = useState('');
+  const [gateMfaCode, setGateMfaCode] = useState('');
+  const [gateError, setGateError] = useState<string | null>(null);
+  const [gateLoading, setGateLoading] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -161,6 +176,94 @@ export default function AgentsPage({ user }: { user: any }) {
     }
   };
 
+  const handleStartAddAgent = () => {
+    if (isAddingAgent) {
+      setIsAddingAgent(false);
+      return;
+    }
+    
+    // Always require verification each time someone wants to view the keys
+    setShowSecurityGate(true);
+    setSecurityStep('password');
+    setGatePassword('');
+    setGateMfaCode('');
+    setGateError(null);
+  };
+
+  const handleGatePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !user) return;
+    setGateLoading(true);
+    setGateError(null);
+
+    try {
+      // Use signInWithPassword to verify current password
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: gatePassword,
+      });
+
+      if (error) throw error;
+
+      // Check if MFA is required for this new session
+      const { data: factors, error: mfaError } = await supabase.auth.mfa.listFactors();
+      if (mfaError) throw mfaError;
+
+      const verifiedFactor = factors.all.find(f => f.status === 'verified');
+      if (verifiedFactor) {
+        setMfaFactorId(verifiedFactor.id);
+        setSecurityStep('mfa');
+      } else {
+        // No MFA enabled, password was enough
+        sessionStorage.setItem('manual_nav', 'true');
+        sessionStorage.setItem('kastron_is_adding_agent', 'true');
+        setTimeout(() => {
+          setIsAddingAgent(true);
+          setShowSecurityGate(false);
+          setGatePassword('');
+        }, 100);
+      }
+    } catch (err: any) {
+      setGateError(err.message || 'Verification failed');
+    } finally {
+      setGateLoading(false);
+    }
+  };
+
+  const handleGateMfaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabase || !mfaFactorId) return;
+    setGateLoading(true);
+    setGateError(null);
+
+    try {
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: mfaFactorId,
+      });
+      if (challengeError) throw challengeError;
+
+      const { error: verifyError } = await supabase.auth.mfa.verify({
+        factorId: mfaFactorId,
+        challengeId: challengeData.id,
+        code: gateMfaCode,
+      });
+      if (verifyError) throw verifyError;
+
+      // Success!
+      sessionStorage.setItem('manual_nav', 'true');
+      sessionStorage.setItem('kastron_is_adding_agent', 'true');
+      setTimeout(() => {
+        setIsAddingAgent(true);
+        setShowSecurityGate(false);
+        setGateMfaCode('');
+      }, 100);
+    } catch (err: any) {
+      setGateError(err.message || '2FA Verification failed');
+    } finally {
+      setGateLoading(false);
+    }
+  };
+
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
@@ -194,11 +297,26 @@ export default function AgentsPage({ user }: { user: any }) {
               Refresh
             </button>
             <button 
-              onClick={() => setIsAddingAgent(!isAddingAgent)}
+              onClick={() => {
+                if (isAddingAgent) {
+                  setIsAddingAgent(false);
+                } else {
+                  handleStartAddAgent();
+                }
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[13px] font-bold transition-all shadow-[0_0_15px_rgba(37,99,235,0.3)]"
             >
-              <Plus className="w-4 h-4" />
-              {isAddingAgent ? 'View Agents' : 'Add New Agent'}
+              {isAddingAgent ? (
+                <>
+                  <Monitor className="w-4 h-4" />
+                  View Agents
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Add New Agent
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -381,7 +499,7 @@ export default function AgentsPage({ user }: { user: any }) {
                                 <p className="text-xs text-neutral-500">Deploy your first agent to start monitoring.</p>
                               </div>
                               <button 
-                                onClick={() => setIsAddingAgent(true)}
+                                onClick={handleStartAddAgent}
                                 className="mt-2 text-blue-500 text-xs font-bold hover:underline"
                               >
                                 Deploy Agent Now
@@ -465,6 +583,115 @@ export default function AgentsPage({ user }: { user: any }) {
                 </div>
               </div>
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Security Access Gate Modal */}
+        <AnimatePresence>
+          {showSecurityGate && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-[#0a0a0a] border border-neutral-800 rounded-3xl p-8 max-w-md w-full space-y-6 shadow-2xl relative overflow-hidden"
+              >
+                {/* Decorative background identity check theme */}
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50" />
+                
+                <div className="flex flex-col items-center text-center space-y-4">
+                  <div className="w-16 h-16 rounded-3xl bg-blue-500/10 flex items-center justify-center rotate-3 border border-blue-500/20">
+                    <Shield className="w-8 h-8 text-blue-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white tracking-tight">Security Access Control</h3>
+                    <p className="text-neutral-500 text-[13px] mt-2 leading-relaxed">
+                      This action requires elevated permissions to view sensitive endpoint installation material.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {gateError && (
+                    <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-xl flex items-center gap-3 text-red-500 text-xs font-medium">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <p>{gateError}</p>
+                    </div>
+                  )}
+
+                  <AnimatePresence mode="wait">
+                    {securityStep === 'password' ? (
+                      <motion.form 
+                        key="password-form"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        onSubmit={handleGatePasswordSubmit}
+                        className="space-y-4"
+                      >
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">Confirm Password</label>
+                          <input 
+                            type="password" 
+                            required
+                            autoFocus
+                            placeholder="Enter your SOC password"
+                            value={gatePassword}
+                            onChange={(e) => setGatePassword(e.target.value)}
+                            className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-4 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-600 transition-all placeholder:text-neutral-800 font-mono"
+                          />
+                        </div>
+                        <button 
+                          type="submit"
+                          disabled={gateLoading || !gatePassword}
+                          className="w-full py-4 bg-white text-black font-bold rounded-xl text-xs uppercase tracking-widest hover:bg-neutral-200 transition-all disabled:opacity-20 flex items-center justify-center gap-2"
+                        >
+                          {gateLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Continue to Verification'}
+                        </button>
+                      </motion.form>
+                    ) : (
+                      <motion.form 
+                        key="mfa-form"
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        onSubmit={handleGateMfaSubmit}
+                        className="space-y-4"
+                      >
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest ml-1">2FA Verification Code</label>
+                          <input 
+                            type="text" 
+                            required
+                            autoFocus
+                            maxLength={6}
+                            placeholder="000 000"
+                            value={gateMfaCode}
+                            onChange={(e) => setGateMfaCode(e.target.value.replace(/\D/g, '').substring(0, 6))}
+                            className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-4 text-center text-2xl font-mono tracking-[0.5em] text-white focus:outline-none focus:ring-1 focus:ring-blue-600 transition-all placeholder:text-neutral-800"
+                          />
+                        </div>
+                        <button 
+                          type="submit"
+                          disabled={gateLoading || gateMfaCode.length !== 6}
+                          className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl text-xs uppercase tracking-widest hover:bg-blue-500 transition-all disabled:opacity-20 flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
+                        >
+                          {gateLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Authorize Access'}
+                        </button>
+                      </motion.form>
+                    )}
+                  </AnimatePresence>
+
+                  <button 
+                    type="button"
+                    onClick={() => setShowSecurityGate(false)}
+                    className="w-full py-2 text-neutral-500 hover:text-white text-[10px] font-bold uppercase tracking-widest transition-colors"
+                  >
+                    Cancel Action
+                  </button>
+                </div>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
 

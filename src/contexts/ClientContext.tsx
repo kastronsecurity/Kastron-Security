@@ -28,8 +28,6 @@ interface ClientContextType {
   user: any | null;
   loading: boolean;
   authLoading: boolean;
-  isAdmin: boolean;
-  adminRole: string | null;
   mfaRequired: boolean;
   mfaLoading: boolean;
   agentCount: number;
@@ -43,12 +41,10 @@ const ClientContext = createContext<ClientContextType | undefined>(undefined);
 export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentClient, setCurrentClient] = useState<Client | null>(null);
   const [user, setUser] = useState<any | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminRole, setAdminRole] = useState<string | null>(null);
   const [mfaRequired, setMfaRequired] = useState(false);
-  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaLoading, setMfaLoading] = useState(true);
   const [agentCount, setAgentCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
@@ -78,22 +74,6 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       setOnboardingCompleted(!!currentUser.user_metadata?.onboarding_completed);
-
-      // Check if admin
-      const { data: adminData } = await supabase
-        .from('admin_users')
-        .select('role')
-        .eq('user_id', currentUser.id)
-        .maybeSingle();
-      
-      if (adminData) {
-        setIsAdmin(true);
-        setAdminRole(adminData.role);
-        // Admins don't strictly need a client_id for metrics, but they might be a client too
-      } else {
-        setIsAdmin(false);
-        setAdminRole(null);
-      }
 
       const { data, error } = await supabase
         .from('clients')
@@ -130,41 +110,12 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!supabase) {
       setLoading(false);
       setAuthLoading(false);
-      setMfaLoading(false);
       return;
     }
-
-    // Initial session check
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const initialUser = session?.user || null;
-        if (initialUser) {
-          setUser(initialUser);
-          fetchClient(initialUser);
-          
-          // Check MFA
-          setMfaLoading(true);
-          const { data: mfaData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-          if (mfaData) {
-            setMfaRequired(mfaData.nextLevel === 'aal2' && mfaData.currentLevel !== 'aal2');
-          }
-          setMfaLoading(false);
-        }
-      } catch (err) {
-        console.error('Error during initial auth check:', err);
-      } finally {
-        setAuthLoading(false);
-      }
-    };
-
-    initAuth();
 
     // Listen for auth changes to re-fetch client
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('Auth state change in ClientProvider:', event);
-      if (event === 'INITIAL_SESSION') return; // Handled by initAuth
-      
       const newUser = session?.user || null;
       setUser(newUser);
       setAuthLoading(false);
@@ -176,6 +127,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
             if (error) throw error;
+            console.log('MFA Check:', data);
             setMfaRequired(data.nextLevel === 'aal2' && data.currentLevel !== 'aal2');
           } catch (err) {
             console.error('Error checking MFA level:', err);
@@ -188,10 +140,6 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } else {
         setCurrentClient(null);
         setLoading(false);
-        setIsAdmin(false);
-        setAdminRole(null);
-        setMfaRequired(false);
-        setMfaLoading(false);
       }
     });
 
@@ -240,8 +188,6 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       user, 
       loading, 
       authLoading, 
-      isAdmin,
-      adminRole,
       mfaRequired,
       mfaLoading,
       agentCount,
