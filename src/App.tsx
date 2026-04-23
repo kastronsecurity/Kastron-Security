@@ -421,25 +421,12 @@ export default function App() {
     }
   };
 
-  if (authLoading || (clientLoading && !currentClient) || mfaLoading) {
+  if (authLoading || mfaLoading) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
           <span className="text-neutral-500 text-xs font-bold uppercase tracking-widest animate-pulse">Initializing SOC...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (user && mfaRequired) {
-    return (
-      <div className="h-screen bg-black flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
-          <MFALogin 
-            onSuccess={() => refreshClient()} 
-            onCancel={() => supabase.auth.signOut()} 
-          />
         </div>
       </div>
     );
@@ -469,6 +456,35 @@ export default function App() {
           setShowAuth(true);
         }}
       />
+    );
+  }
+
+  if (mfaRequired) {
+    return (
+      <div className="h-screen bg-black flex items-center justify-center p-8">
+        <div className="w-full max-w-md">
+          <MFALogin 
+            onSuccess={() => refreshClient()} 
+            onCancel={() => supabase.auth.signOut()} 
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Admin Portal check - Render separately from client layout
+  if (isAdmin) {
+    return <AdminPortal />;
+  }
+
+  if (clientLoading && !currentClient) {
+    return (
+      <div className="h-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
+          <span className="text-neutral-500 text-xs font-bold uppercase tracking-widest animate-pulse">Syncing Environment...</span>
+        </div>
+      </div>
     );
   }
 
@@ -768,9 +784,7 @@ export default function App() {
 
         {/* Dynamic Content */}
         <AnimatePresence mode="wait">
-          {currentPage === ('admin' as any) ? (
-            <AdminPortal />
-          ) : currentPage === 'dashboard' ? (
+          {currentPage === 'dashboard' ? (
             <motion.div 
               key="dashboard"
               initial={{ opacity: 0, x: -20 }}

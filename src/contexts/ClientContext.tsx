@@ -43,12 +43,12 @@ const ClientContext = createContext<ClientContextType | undefined>(undefined);
 export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentClient, setCurrentClient] = useState<Client | null>(null);
   const [user, setUser] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminRole, setAdminRole] = useState<string | null>(null);
   const [mfaRequired, setMfaRequired] = useState(false);
-  const [mfaLoading, setMfaLoading] = useState(true);
+  const [mfaLoading, setMfaLoading] = useState(false);
   const [agentCount, setAgentCount] = useState(0);
   const [alertCount, setAlertCount] = useState(0);
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
@@ -130,12 +130,41 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!supabase) {
       setLoading(false);
       setAuthLoading(false);
+      setMfaLoading(false);
       return;
     }
+
+    // Initial session check
+    const initAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const initialUser = session?.user || null;
+        if (initialUser) {
+          setUser(initialUser);
+          fetchClient(initialUser);
+          
+          // Check MFA
+          setMfaLoading(true);
+          const { data: mfaData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (mfaData) {
+            setMfaRequired(mfaData.nextLevel === 'aal2' && mfaData.currentLevel !== 'aal2');
+          }
+          setMfaLoading(false);
+        }
+      } catch (err) {
+        console.error('Error during initial auth check:', err);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    initAuth();
 
     // Listen for auth changes to re-fetch client
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('Auth state change in ClientProvider:', event);
+      if (event === 'INITIAL_SESSION') return; // Handled by initAuth
+      
       const newUser = session?.user || null;
       setUser(newUser);
       setAuthLoading(false);
@@ -147,7 +176,6 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
             if (error) throw error;
-            console.log('MFA Check:', data);
             setMfaRequired(data.nextLevel === 'aal2' && data.currentLevel !== 'aal2');
           } catch (err) {
             console.error('Error checking MFA level:', err);
@@ -160,6 +188,10 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } else {
         setCurrentClient(null);
         setLoading(false);
+        setIsAdmin(false);
+        setAdminRole(null);
+        setMfaRequired(false);
+        setMfaLoading(false);
       }
     });
 
