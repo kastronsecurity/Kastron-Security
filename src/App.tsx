@@ -65,6 +65,7 @@ import EscalationsPage from './components/escalations/EscalationsPage';
 import EntitiesPage from './components/entities/EntitiesPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import MFALogin from './components/auth/MFALogin';
+import AdminPortal from './components/admin/AdminPortal';
 import { supabase } from './lib/supabase';
 import { useClient } from './contexts/ClientContext';
 import logo from './assets/logo.png';
@@ -149,7 +150,7 @@ const UnderConstruction = ({ title }: { title: string }) => (
 );
 
 export default function App() {
-  const { currentClient, user, loading: clientLoading, authLoading, mfaRequired, mfaLoading, refreshClient, agentCount, alertCount, onboardingCompleted } = useClient();
+  const { currentClient, user, loading: clientLoading, authLoading, isAdmin, mfaRequired, mfaLoading, refreshClient, agentCount, alertCount, onboardingCompleted } = useClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'alerts' | 'escalations' | 'cases' | 'onboarding' | 'agents' | 'rules' | 'entities' | 'timeline' | 'reports' | 'user-cog' | 'integrations' | 'audit' | 'settings' | 'api-logs' | 'support'>('dashboard');
   
@@ -158,6 +159,14 @@ export default function App() {
   // Handle initial page and redirection based on data presence
   useEffect(() => {
     if (authLoading || clientLoading) return;
+
+    // Admin redirection check
+    if (user && isAdmin) {
+      if (currentPage !== 'admin' as any) {
+        setCurrentPage('admin' as any);
+      }
+      return;
+    }
 
     const isManualNav = window.sessionStorage.getItem('manual_nav') === 'true';
 
@@ -759,7 +768,9 @@ export default function App() {
 
         {/* Dynamic Content */}
         <AnimatePresence mode="wait">
-          {currentPage === 'dashboard' ? (
+          {currentPage === ('admin' as any) ? (
+            <AdminPortal />
+          ) : currentPage === 'dashboard' ? (
             <motion.div 
               key="dashboard"
               initial={{ opacity: 0, x: -20 }}

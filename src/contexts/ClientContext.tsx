@@ -28,6 +28,8 @@ interface ClientContextType {
   user: any | null;
   loading: boolean;
   authLoading: boolean;
+  isAdmin: boolean;
+  adminRole: string | null;
   mfaRequired: boolean;
   mfaLoading: boolean;
   agentCount: number;
@@ -43,6 +45,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminRole, setAdminRole] = useState<string | null>(null);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaLoading, setMfaLoading] = useState(true);
   const [agentCount, setAgentCount] = useState(0);
@@ -74,6 +78,22 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       setOnboardingCompleted(!!currentUser.user_metadata?.onboarding_completed);
+
+      // Check if admin
+      const { data: adminData } = await supabase
+        .from('admin_users')
+        .select('role')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+      
+      if (adminData) {
+        setIsAdmin(true);
+        setAdminRole(adminData.role);
+        // Admins don't strictly need a client_id for metrics, but they might be a client too
+      } else {
+        setIsAdmin(false);
+        setAdminRole(null);
+      }
 
       const { data, error } = await supabase
         .from('clients')
@@ -188,6 +208,8 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       user, 
       loading, 
       authLoading, 
+      isAdmin,
+      adminRole,
       mfaRequired,
       mfaLoading,
       agentCount,
