@@ -8,15 +8,14 @@ ALTER TABLE custom_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alert_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alert_playbooks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE threat_intel_cache ENABLE ROW LEVEL SECURITY;
 
--- 2. Clients Table: Users can only see their own client record
+-- 2. Clients Table: Users can only see their own client record, Admins see all
 CREATE POLICY "Users can view own client" ON clients
-  FOR SELECT USING (auth.uid() = user_id);
+  FOR SELECT USING (auth.uid() = user_id OR auth.jwt() ->> 'email' = 'adminkastronsec@gmail.com');
 
 -- 3. Scoped Tables: Users can only see data belonging to their client_id
 -- We use a helper function to get the user's client_id for efficiency
@@ -26,45 +25,49 @@ RETURNS uuid AS $$
   SELECT id FROM clients WHERE user_id = auth.uid();
 $$ LANGUAGE sql SECURITY DEFINER;
 
+-- Helper to check if current user is admin
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS boolean AS $$
+  SELECT auth.jwt() ->> 'email' = 'adminkastronsec@gmail.com';
+$$ LANGUAGE sql SECURITY DEFINER;
+
 -- Agents
 CREATE POLICY "Users can view own agents" ON agents
-  FOR SELECT USING (client_id = get_my_client_id());
+  FOR SELECT USING (client_id = get_my_client_id() OR is_admin());
 CREATE POLICY "Users can insert own agents" ON agents
-  FOR INSERT WITH CHECK (client_id = get_my_client_id());
+  FOR INSERT WITH CHECK (client_id = get_my_client_id() OR is_admin());
 CREATE POLICY "Users can update own agents" ON agents
-  FOR UPDATE USING (client_id = get_my_client_id());
+  FOR UPDATE USING (client_id = get_my_client_id() OR is_admin());
 CREATE POLICY "Users can delete own agents" ON agents
-  FOR DELETE USING (client_id = get_my_client_id());
+  FOR DELETE USING (client_id = get_my_client_id() OR is_admin());
 
 -- Agent Deletions
 CREATE POLICY "Users can manage own agent deletions" ON agent_deletions
-  FOR ALL USING (client_id = get_my_client_id());
+  FOR ALL USING (client_id = get_my_client_id() OR is_admin());
 
 -- Custom Rules
 CREATE POLICY "Users can manage own custom rules" ON custom_rules
-  FOR ALL USING (client_id = get_my_client_id());
+  FOR ALL USING (client_id = get_my_client_id() OR is_admin());
 
 -- Cases
 CREATE POLICY "Users can manage own cases" ON cases
-  FOR ALL USING (client_id = get_my_client_id());
+  FOR ALL USING (client_id = get_my_client_id() OR is_admin());
 
 -- Alerts
 CREATE POLICY "Users can view own alerts" ON alerts
-  FOR SELECT USING (client_id = get_my_client_id());
+  FOR SELECT USING (client_id = get_my_client_id() OR is_admin());
 CREATE POLICY "Users can update own alerts" ON alerts
-  FOR UPDATE USING (client_id = get_my_client_id());
+  FOR UPDATE USING (client_id = get_my_client_id() OR is_admin());
 
--- Events
-CREATE POLICY "Users can view own events" ON events
-  FOR SELECT USING (client_id = get_my_client_id());
+-- Events removed
 
 -- Alert Groups
 CREATE POLICY "Users can manage own alert groups" ON alert_groups
-  FOR ALL USING (client_id = get_my_client_id());
+  FOR ALL USING (client_id = get_my_client_id() OR is_admin());
 
 -- Alert Playbooks
 CREATE POLICY "Users can manage own alert playbooks" ON alert_playbooks
-  FOR ALL USING (client_id = get_my_client_id());
+  FOR ALL USING (client_id = get_my_client_id() OR is_admin());
 
 -- Reports
 CREATE TABLE IF NOT EXISTS reports (

@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
 import { cn } from '../../lib/utils';
 import MFALogin from './MFALogin';
+import { Logo } from '../ui/Logo';
 
 interface LandingPageProps {
   onLogin: (user: any) => void;
@@ -173,8 +174,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
               <span className="text-xs font-bold uppercase tracking-widest">Back to Home</span>
             </button>
           )}
-          <div className="flex items-center gap-2.5 mb-16 group cursor-pointer">
-            <img src="/src/assets/logo.png" alt="KastronSec" className="w-8 h-8 object-contain transition-transform group-hover:scale-110" />
+          <div className="flex items-center gap-4 mb-20 group cursor-pointer">
+            <div className="w-16 h-16 flex items-center justify-center transition-transform group-hover:scale-110">
+              <Logo className="w-16 h-16" />
+            </div>
             <span className="text-xl font-bold tracking-tighter text-white">KastronSec</span>
           </div>
 
@@ -192,94 +195,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin, initialMode = 'login
               securing your digital assets with the power of advanced AI.
             </p>
           </motion.div>
-
-          {/* Professional Security Intelligence Visualization */}
-          <div className="relative mt-16 group">
-            {/* Background Mesh Grid */}
-            <div className="absolute inset-0 z-0 opacity-[0.05]" 
-                 style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-            
-            <div className="relative z-10 space-y-6">
-              {/* Main Intelligence Core */}
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8 }}
-                className="bg-white/[0.02] border border-white/10 rounded-2xl p-8 backdrop-blur-sm overflow-hidden relative"
-              >
-                <div className="absolute top-0 right-0 p-6">
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
-                    <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Active Intelligence</span>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-8">
-                  <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center shadow-[0_0_40px_rgba(255,255,255,0.1)]">
-                    <Shield className="w-8 h-8 text-black" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-white mb-2 tracking-tight">KastronSec Core</h3>
-                    <p className="text-neutral-500 text-sm font-medium leading-relaxed max-w-md">
-                      Our proprietary security engine orchestrating autonomous threat detection and response across your entire infrastructure.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Animated Data Stream */}
-                <div className="mt-10 h-16 flex items-end gap-1.5">
-                  {[...Array(32)].map((_, i) => (
-                    <motion.div
-                      key={i}
-                      animate={{ 
-                        height: [10, Math.random() * 40 + 10, 10],
-                        opacity: [0.1, 0.3, 0.1]
-                      }}
-                      transition={{ 
-                        duration: 2 + Math.random(), 
-                        repeat: Infinity, 
-                        ease: "easeInOut",
-                        delay: i * 0.05 
-                      }}
-                      className="flex-1 bg-white/20 rounded-t-[1px]"
-                    />
-                  ))}
-                </div>
-              </motion.div>
-
-              {/* Feature Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {features.map((feature, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.2 + (index * 0.1) }}
-                    className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 hover:bg-white/[0.04] hover:border-white/20 transition-all duration-500 group"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-6 group-hover:scale-110 group-hover:border-white/30 transition-all duration-500">
-                      <feature.icon className="w-5 h-5 text-white" />
-                    </div>
-                    <h4 className="text-white font-bold text-sm mb-2 tracking-tight group-hover:text-neutral-300 transition-colors">
-                      {feature.title}
-                    </h4>
-                    <p className="text-neutral-500 text-[11px] leading-relaxed font-medium">
-                      {feature.description}
-                    </p>
-                    
-                    {/* Professional Metric Label */}
-                    <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between">
-                      <span className="text-[9px] font-bold text-neutral-600 uppercase tracking-widest">Status</span>
-                      <span className="text-[9px] font-bold text-white uppercase tracking-widest">Optimized</span>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-
-            {/* Subtle Decorative Elements */}
-            <div className="absolute -bottom-12 -left-12 w-64 h-64 bg-white/[0.02] blur-[100px] rounded-full pointer-events-none" />
-          </div>
         </div>
       </div>
 

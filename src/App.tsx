@@ -51,6 +51,7 @@ import {
   CartesianGrid
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { cn, getSeverityFromLevel } from './lib/utils';
 import { SeverityBadge, StatusPill } from './components/ui/StatusElements';
 import AlertsPage from './components/alerts/AlertsPage';
@@ -67,33 +68,61 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import MFALogin from './components/auth/MFALogin';
 import { supabase } from './lib/supabase';
 import { useClient } from './contexts/ClientContext';
-import logo from './assets/logo.png';
+import { Logo } from './components/ui/Logo';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { NotificationToasts } from './components/ui/NotificationToast';
 import { NotificationBell } from './components/ui/NotificationBell';
+import { useIsAdmin } from './hooks/useIsAdmin';
+import RuleApprovalsPage from './components/admin/RuleApprovalsPage';
+import ClientsAdminPage from './components/admin/ClientsAdminPage';
+import SubscriptionsPage from './components/admin/SubscriptionsPage';
+import AuditLogPage from './components/admin/AuditLogPage';
+import { ClipboardList, CreditCard } from 'lucide-react';
 
 // --- Components ---
 
-const SidebarItem = ({ icon: Icon, label, active = false, color, onClick, disabled = false }: { icon: any, label: string, active?: boolean, color?: string, onClick?: () => void, disabled?: boolean }) => (
-  <button 
-    onClick={onClick}
-    disabled={disabled}
-    className={cn(
-      "w-full flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-200 group",
-      active ? "bg-white/10 text-white" : "text-neutral-400 hover:bg-white/5 hover:text-white",
-      disabled && "opacity-30 cursor-not-allowed hover:bg-transparent hover:text-neutral-400"
-    )}
-  >
-    <Icon className={cn(
-      "w-5 h-5 transition-colors duration-200", 
-      active 
-        ? (color || "text-white") 
-        : cn("text-neutral-400", color ? `group-hover:${color}` : "group-hover:text-white"),
-      disabled && "group-hover:text-neutral-400"
-    )} />
-    <span className="text-[13px] font-medium">{label}</span>
-  </button>
-);
+const SidebarItem = ({ icon: Icon, label, active = false, color, onClick, disabled = false, badge, badgeColor = 'blue', to }: { icon: any, label: string, active?: boolean, color?: string, onClick?: () => void, disabled?: boolean, badge?: number, badgeColor?: string, to?: string }) => {
+  const navigate = useNavigate();
+  const handleClick = () => {
+    if (to) {
+      navigate(to);
+    }
+    if (onClick) {
+      onClick();
+    }
+  };
+
+  return (
+    <button 
+      onClick={handleClick}
+      disabled={disabled}
+      className={cn(
+        "w-full flex items-center justify-between px-3 py-2 rounded-md transition-all duration-200 group",
+        active ? "bg-white/10 text-white" : "text-neutral-400 hover:bg-white/5 hover:text-white",
+        disabled && "opacity-30 cursor-not-allowed hover:bg-transparent hover:text-neutral-400"
+      )}
+    >
+      <div className="flex items-center gap-3">
+        <Icon className={cn(
+          "w-5 h-5 transition-colors duration-200", 
+          active 
+            ? (color || "text-white") 
+            : cn("text-neutral-400", color ? `group-hover:${color}` : "group-hover:text-white"),
+          disabled && "group-hover:text-neutral-400"
+        )} />
+        <span className="text-[13px] font-medium">{label}</span>
+      </div>
+      {badge !== undefined && badge > 0 && (
+        <span className={cn(
+          "text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+          badgeColor === 'red' ? "bg-red-500 text-white" : "bg-blue-500 text-white"
+        )}>
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+};
 
 const SectionHeader = ({ title, showMore = false, moreText = "View All", onMoreClick }: { title: string, showMore?: boolean, moreText?: string, onMoreClick?: () => void }) => (
   <div className="flex items-center justify-between mb-4">
@@ -150,7 +179,38 @@ const UnderConstruction = ({ title }: { title: string }) => (
 
 export default function App() {
   const { currentClient, user, loading: clientLoading, authLoading, mfaRequired, mfaLoading, refreshClient, agentCount, alertCount, onboardingCompleted } = useClient();
+  const { isAdmin, adminLoading } = useIsAdmin();
+  const [pendingRuleCount, setPendingRuleCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!isAdmin) return
+    const fetchPendingCount = async () => {
+      const { count } = await supabase
+        .from('rule_approval_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending')
+      setPendingRuleCount(count || 0)
+    }
+    fetchPendingCount()
+
+    // Realtime subscription to update badge
+    const sub = supabase.channel('pending_rules')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'rule_approval_requests'
+      }, () => fetchPendingCount())
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(sub)
+    }
+  }, [isAdmin])
+
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'alerts' | 'escalations' | 'cases' | 'onboarding' | 'agents' | 'rules' | 'entities' | 'timeline' | 'reports' | 'user-cog' | 'integrations' | 'audit' | 'settings' | 'api-logs' | 'support'>(() => {
     const saved = window.sessionStorage.getItem('kastron_current_page');
     // Ensure the saved page is a valid type or default to dashboard
@@ -485,12 +545,8 @@ export default function App() {
         <div className="p-4 space-y-4">
           <div className="flex items-center justify-between px-2 py-1.5 hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 flex items-center justify-center bg-white/5 rounded-md overflow-hidden">
-                <img 
-                  src={logo} 
-                  alt="KastronSec Logo" 
-                  className="w-8 h-8 object-contain"
-                />
+              <div className="w-14 h-14 flex items-center justify-center bg-white/5 rounded-xl overflow-hidden">
+                <Logo className="w-12 h-12" />
               </div>
               <span className="text-white font-medium text-[13px]">KastronSec</span>
             </div>
@@ -526,6 +582,21 @@ export default function App() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 space-y-6 scrollbar-hide pb-10">
+          <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-2 mb-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[9px] font-bold text-neutral-500 uppercase">Identity</span>
+              <div className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                isAdmin ? "bg-red-500 animate-pulse" : "bg-green-500"
+              )} />
+            </div>
+            <p className="text-[10px] text-neutral-400 truncate mt-1" title={user?.email || 'Guest'}>
+              {user?.email || 'Not logged in'}
+            </p>
+            <p className="text-[9px] font-bold text-neutral-600 uppercase mt-1">
+              Role: {isAdmin ? 'System Admin' : 'Client User'}
+            </p>
+          </div>
           <div>
             <SectionHeader title="General" />
             <SidebarItem 
@@ -533,6 +604,7 @@ export default function App() {
               label="Dashboard" 
               active={currentPage === 'dashboard'} 
               disabled={!hasData}
+              to="/"
               onClick={() => {
                 if (hasData) {
                   setCurrentPage('dashboard');
@@ -550,6 +622,7 @@ export default function App() {
                 label="Alerts" 
                 active={currentPage === 'alerts'} 
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('alerts');
@@ -562,6 +635,7 @@ export default function App() {
                 label="Escalations" 
                 active={currentPage === 'escalations'} 
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('escalations');
@@ -575,6 +649,7 @@ export default function App() {
                 active={currentPage === 'cases'} 
                 color="text-blue-500" 
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('cases');
@@ -587,6 +662,7 @@ export default function App() {
                 label="Entities" 
                 active={currentPage === 'entities'}
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('entities');
@@ -599,6 +675,7 @@ export default function App() {
                 label="Attack Timeline" 
                 active={currentPage === 'timeline'}
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('timeline');
@@ -611,6 +688,7 @@ export default function App() {
                 label="Reports" 
                 active={currentPage === 'reports'}
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('reports');
@@ -621,6 +699,40 @@ export default function App() {
             </div>
           </div>
 
+          {isAdmin && (
+            <div>
+              <SectionHeader title="System Administration" />
+              <div className="space-y-0.5">
+                <SidebarItem 
+                  icon={ShieldCheck} 
+                  label="Rule Approvals" 
+                  active={location.pathname === '/admin/rule-approvals'} 
+                  to="/admin/rule-approvals"
+                  badge={pendingRuleCount > 0 ? pendingRuleCount : undefined}
+                  badgeColor="red"
+                />
+                <SidebarItem 
+                  icon={Users} 
+                  label="Clients" 
+                  active={location.pathname === '/admin/clients'} 
+                  to="/admin/clients"
+                />
+                <SidebarItem 
+                  icon={CreditCard} 
+                  label="Subscriptions" 
+                  active={location.pathname === '/admin/subscriptions'} 
+                  to="/admin/subscriptions"
+                />
+                <SidebarItem 
+                  icon={ClipboardList} 
+                  label="System Audit" 
+                  active={location.pathname === '/admin/audit-log'} 
+                  to="/admin/audit-log"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <SectionHeader title="Administration" />
             <div className="space-y-0.5">
@@ -628,6 +740,7 @@ export default function App() {
                 icon={Monitor} 
                 label="Agent" 
                 active={currentPage === 'agents'} 
+                to="/"
                 onClick={() => {
                   setCurrentPage('agents');
                   window.sessionStorage.setItem('manual_nav', 'true');
@@ -639,6 +752,7 @@ export default function App() {
                 label="Rules" 
                 active={currentPage === 'rules'} 
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('rules');
@@ -651,6 +765,7 @@ export default function App() {
                 icon={UserCog} 
                 label="User" 
                 active={currentPage === 'user-cog'}
+                to="/"
                 onClick={() => {
                   setCurrentPage('user-cog');
                   window.sessionStorage.setItem('manual_nav', 'true');
@@ -661,6 +776,7 @@ export default function App() {
                 label="Integrations" 
                 active={currentPage === 'integrations'}
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('integrations');
@@ -673,6 +789,7 @@ export default function App() {
                 label="Audit Logs" 
                 active={currentPage === 'audit'}
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('audit');
@@ -690,6 +807,7 @@ export default function App() {
                 icon={Settings} 
                 label="Settings" 
                 active={currentPage === 'settings'}
+                to="/"
                 onClick={() => {
                   setCurrentPage('settings');
                   window.sessionStorage.setItem('manual_nav', 'true');
@@ -700,6 +818,7 @@ export default function App() {
                 label="API Logs" 
                 active={currentPage === 'api-logs'}
                 disabled={!hasData}
+                to="/"
                 onClick={() => {
                   if (hasData) {
                     setCurrentPage('api-logs');
@@ -711,6 +830,7 @@ export default function App() {
                 icon={Headset} 
                 label="Support" 
                 active={currentPage === 'support'}
+                to="/"
                 onClick={() => {
                   setCurrentPage('support');
                   window.sessionStorage.setItem('manual_nav', 'true');
@@ -736,7 +856,17 @@ export default function App() {
         {/* Header */}
         <header className="h-16 border-b border-neutral-800 flex items-center justify-between px-8 bg-black z-10">
           <div className="flex items-center gap-4">
-            <h1 className="text-white font-semibold text-lg tracking-tight capitalize">{currentPage}</h1>
+            <h1 className="text-white font-semibold text-lg tracking-tight capitalize">
+              {location.pathname.startsWith('/admin') 
+                ? location.pathname.split('/').pop()?.replace(/-/g, ' ') 
+                : currentPage}
+            </h1>
+            {isAdmin && (
+              <div className="px-2 py-0.5 rounded-md bg-red-500/10 border border-red-500/20 flex items-center gap-1">
+                <ShieldCheck className="w-2.5 h-2.5 text-red-500" />
+                <span className="text-[10px] font-bold text-red-500 uppercase tracking-[0.15em]">Admin Access</span>
+              </div>
+            )}
             <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-neutral-900 border border-neutral-800">
               <div className={cn(
                 "w-1.5 h-1.5 rounded-full animate-pulse",
@@ -770,7 +900,9 @@ export default function App() {
 
         {/* Dynamic Content */}
         <AnimatePresence mode="wait">
-          {currentPage === 'dashboard' ? (
+          <Routes location={location} key={location.pathname}>
+            <Route path="/" element={
+              currentPage === 'dashboard' ? (
             <motion.div 
               key="dashboard"
               initial={{ opacity: 0, x: -20 }}
@@ -1118,8 +1250,13 @@ export default function App() {
                 currentPage === 'support' ? 'Support' : 'Under Construction'
               } 
             />
-          )}
-        </AnimatePresence>
+          )} />
+          <Route path="/admin/rules" element={<RuleApprovalsPage />} />
+          <Route path="/admin/clients" element={<ClientsAdminPage />} />
+          <Route path="/admin/subscriptions" element={<SubscriptionsPage />} />
+          <Route path="/admin/audit" element={<AuditLogPage />} />
+        </Routes>
+      </AnimatePresence>
       </main>
       <NotificationToasts currentPage={currentPage} />
     </div>

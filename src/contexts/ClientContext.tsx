@@ -110,6 +110,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!supabase) {
       setLoading(false);
       setAuthLoading(false);
+      setMfaLoading(false);
       return;
     }
 
@@ -140,6 +141,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } else {
         setCurrentClient(null);
         setLoading(false);
+        setMfaLoading(false);
       }
     });
 

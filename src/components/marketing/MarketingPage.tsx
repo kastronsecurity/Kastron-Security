@@ -21,7 +21,7 @@ import {
   Command,
   Code
 } from 'lucide-react';
-import logo from '../../assets/logo.png';
+import { Logo } from '../ui/Logo';
 import BetaAgreementModal from './BetaAgreementModal';
 import { cn } from '../../lib/utils';
 
@@ -156,8 +156,10 @@ export default function MarketingPage({ onGetStarted, onLogin }: MarketingPagePr
         isScrolled ? "bg-black/80 backdrop-blur-md border-white/10 py-3" : "bg-transparent border-transparent py-5"
       )}>
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 group cursor-pointer">
-            <img src={logo} alt="KastronSec" className="w-8 h-8 object-contain transition-transform group-hover:scale-110" />
+          <div className="flex items-center gap-3 group cursor-pointer">
+            <div className="w-10 h-10 flex items-center justify-center transition-transform group-hover:scale-110">
+              <Logo className="w-10 h-10" />
+            </div>
             <span className="text-lg font-bold tracking-tighter">KastronSec</span>
           </div>
           
@@ -410,9 +412,9 @@ export default function MarketingPage({ onGetStarted, onLogin }: MarketingPagePr
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-start gap-12 mb-16">
             <div className="space-y-6 max-w-xs">
-              <div className="flex items-center gap-2.5">
-                <img src={logo} alt="KastronSec" className="w-6 h-6 object-contain" />
-                <span className="text-lg font-bold tracking-tighter">KastronSec</span>
+              <div className="flex items-center gap-3">
+                <Logo className="w-12 h-12" />
+                <span className="text-xl font-bold tracking-tighter">KastronSec</span>
               </div>
               <p className="text-neutral-500 text-sm leading-relaxed font-medium">
                 Security Without Boundaries. Enterprise-grade protection for every organization.
